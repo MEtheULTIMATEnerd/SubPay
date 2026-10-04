@@ -6,7 +6,7 @@ import { useData } from "@/lib/store";
 import { read } from "@/lib/api";
 import { getContractDownloadUrl, retryExtraction, uploadContract } from "@/lib/contracts";
 import { LIVE } from "@/lib/env";
-import { EmptyState, ErrorState, Icon, Page, PageHeader, ProcessingBadge, cx, fmtDate } from "@/components/ui";
+import { EmptyState, ErrorState, Icon, Page, PageHeader, ProcessingBadge, ProgressBar, cx, fmtDate } from "@/components/ui";
 
 export default function ContractsPage() {
   const db = useData();
@@ -15,6 +15,7 @@ export default function ContractsPage() {
   const [error, setError] = useState<{ title: string; body: string } | null>(null);
   const [drag, setDrag] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [sent, setSent] = useState(0); // share of the file uploaded so far, 0 to 1
   const input = useRef<HTMLInputElement>(null);
 
   async function upload(files: FileList | null) {
@@ -22,8 +23,9 @@ export default function ContractsPage() {
     const file = files?.[0];
     if (!file || uploading) return;
     setUploading(true);
+    setSent(0);
     try {
-      await uploadContract(projectId, file);
+      await uploadContract(projectId, file, setSent);
     } catch (e) {
       setError({ title: "Upload rejected", body: (e as Error).message });
     } finally {
@@ -64,7 +66,8 @@ export default function ContractsPage() {
         <Icon.upload className="h-9 w-9 text-sage" />
         <p className="mt-3 font-semibold">Drop your subcontract here</p>
         <p className="text-sm text-muted">PDF or DOCX, up to 25 MB</p>
-        <button className="btn-dark mt-4" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? "Uploading…" : "Choose file"}</button>
+        <button className="btn-dark mt-4" disabled={uploading} onClick={() => input.current?.click()}>{uploading ? `Uploading… ${Math.round(sent * 100)}%` : "Choose file"}</button>
+        {uploading && <ProgressBar value={sent} label="Uploading contract" className="mt-4 w-full max-w-xs" />}
         <input ref={input} type="file" hidden accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => { void upload(e.target.files); e.target.value = ""; }} />
       </div>
       {error && <div className="mb-6"><ErrorState title={error.title} body={error.body} /></div>}

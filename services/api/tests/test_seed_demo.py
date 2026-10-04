@@ -74,9 +74,17 @@ def test_the_seed_builds_the_demo_project_through_the_api(
         "Conduit run, Level 2 east corridor (blurred)"
     ]
     assert {r["evidence_type"] for r in records} == {"photo", "docket", "document", "message"}
-    assert sum(1 for r in records if r["storage_path"] is None) == 2  # written notes
+    assert sum(1 for r in records if r["storage_path"] is None) == 1  # the written note
     stored = [path for bucket, path in storage.files if bucket == "evidence"]
-    assert len(stored) == 7 and all(path.startswith(f"{project_id}/") for path in stored)
+    assert len(stored) == 8 and all(path.startswith(f"{project_id}/") for path in stored)
+    # the first four follow the team's agreed example
+    assert [(r["code"], r["evidence_type"]) for r in records[:3]] == [
+        ("EV-001", "photo"),
+        ("EV-002", "photo"),
+        ("EV-003", "docket"),
+    ]
+    assert records[3]["code"] == "EV-004" and "Site instruction" in records[3]["title"]
+    assert records[0]["metadata"]["tags"] == ["conduit", "level 2"]
     assert all(str(r["captured_at"]) < NOW.isoformat() for r in records)
     assert all(r["metadata"]["source"] in ("mobile_upload", "desktop_upload") for r in records)
 

@@ -147,8 +147,8 @@ No CLI? Open the Supabase dashboard, go to the SQL editor, and run each file in
    Commercial Fitout** through the API, the same way the web app would: it
    uploads a contract, lets extraction run, confirms three of the four items
    (one with a correction) and leaves one as an AI draft, then adds nine
-   evidence records (photos, a docket, a timesheet and two written notes; one
-   is archived). The files are generated placeholders, so the photos are
+   evidence records (photos, a delivery docket, a site instruction, a
+   timesheet and a written note; one is archived). The files are generated placeholders, so the photos are
    coloured stripes rather than real site photos. It works for any account,
    and each organisation gets its own copy.
 

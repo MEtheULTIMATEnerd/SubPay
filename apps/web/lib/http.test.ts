@@ -92,3 +92,84 @@ test("tells the app when the API rejects the session", async () => {
   await expect(apiFetch("/projects/x")).rejects.toMatchObject({ status: 404 });
   expect(handler).not.toHaveBeenCalled();
 });
+
+// ---- uploads that report progress use XMLHttpRequest ----
+class FakeXhr {
+  static last: FakeXhr;
+  method = ""; url = ""; headers: Record<string, string> = {}; body: unknown = null;
+  status = 0; responseText = "";
+  upload: { onprogress: ((e: { lengthComputable: boolean; loaded: number; total: number }) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null; onerror: (() => void) | null = null; onabort: (() => void) | null = null;
+  constructor() { FakeXhr.last = this; }
+  open(method: string, url: string) { this.method = method; this.url = url; }
+  setRequestHeader(name: string, value: string) { this.headers[name] = value; }
+  send(body: unknown) { this.body = body; }
+  progress(loaded: number, total: number) { this.upload.onprogress?.({ lengthComputable: true, loaded, total }); }
+  finish(status: number, body: unknown) { this.status = status; this.responseText = typeof body === "string" ? body : JSON.stringify(body); this.onload?.(); }
+}
+const fileForm = () => {
+  const form = new FormData();
+  form.append("file", new File(["photo"], "site.jpg", { type: "image/jpeg" }));
+  return form;
+};
+/** Wait until apiFetch has read the session and sent the request. */
+const sent = () => vi.waitFor(() => expect(FakeXhr.last?.body).toBeTruthy());
+
+test("an upload with a progress callback reports how much has been sent", async () => {
+  vi.stubGlobal("XMLHttpRequest", FakeXhr);
+  const progress: number[] = [];
+  const form = fileForm();
+  const result = apiFetch<{ id: string }>("/projects/p1/evidence", { method: "POST", form, onUploadProgress: (f) => progress.push(f) });
+  await sent();
+
+  const xhr = FakeXhr.last;
+  expect(xhr.method).toBe("POST");
+  expect(xhr.url).toBe("http://api.test/api/v1/projects/p1/evidence");
+  expect(xhr.headers).toEqual({ Authorization: "Bearer user-token" }); // no Content-Type: the browser adds the boundary
+  expect(xhr.body).toBe(form);
+  expect(fetchMock).not.toHaveBeenCalled();
+
+  xhr.progress(25, 100);
+  xhr.progress(80, 100);
+  xhr.finish(201, { id: "e1" });
+  await expect(result).resolves.toEqual({ id: "e1" });
+  expect(progress).toEqual([0.25, 0.8, 1]);
+});
+
+test("a failed upload gives the same errors as any other request", async () => {
+  vi.stubGlobal("XMLHttpRequest", FakeXhr);
+  const handler = vi.fn();
+  setUnauthorizedHandler(handler);
+
+  let result = apiFetch("/projects/p1/evidence", { method: "POST", form: fileForm(), onUploadProgress: () => {} }).catch((e) => e);
+  await sent();
+  FakeXhr.last.finish(415, { error: { code: "unsupported_media_type", message: "That file type is not supported." } });
+  expect(await result).toMatchObject({ status: 415, code: "unsupported_media_type", message: "That file type is not supported." });
+
+  result = apiFetch("/projects/p1/evidence", { method: "POST", form: fileForm(), onUploadProgress: () => {} }).catch((e) => e);
+  await vi.waitFor(() => expect(FakeXhr.last.status).toBe(0));
+  await sent();
+  FakeXhr.last.finish(502, "<html>Bad gateway</html>");
+  expect(await result).toMatchObject({ status: 502, message: "Something went wrong. Please try again." });
+
+  result = apiFetch("/projects/p1/evidence", { method: "POST", form: fileForm(), onUploadProgress: () => {} }).catch((e) => e);
+  await vi.waitFor(() => expect(FakeXhr.last.status).toBe(0));
+  await sent();
+  FakeXhr.last.onerror?.();
+  expect(await result).toMatchObject({ status: 503, code: "service_unavailable" });
+  expect(handler).not.toHaveBeenCalled();
+
+  result = apiFetch("/projects/p1/evidence", { method: "POST", form: fileForm(), onUploadProgress: () => {} }).catch((e) => e);
+  await vi.waitFor(() => expect(FakeXhr.last.status).toBe(0));
+  await sent();
+  FakeXhr.last.finish(401, { error: { code: "unauthenticated", message: "Sign in again." } });
+  expect(await result).toMatchObject({ status: 401 });
+  expect(handler).toHaveBeenCalledOnce();
+});
+
+test("without a progress callback an upload still uses fetch", async () => {
+  vi.stubGlobal("XMLHttpRequest", FakeXhr);
+  fetchMock.mockResolvedValue(json(201, { id: "c1" }));
+  await apiFetch("/projects/p1/contracts", { method: "POST", form: fileForm() });
+  expect(fetchMock).toHaveBeenCalledOnce();
+});

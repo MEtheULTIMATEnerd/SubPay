@@ -9,7 +9,7 @@ vi.mock("./supabase", () => ({ supabase: () => { throw new Error("not used"); } 
 import { read, setAiAvailable } from "./api";
 import { ApiError } from "./errors";
 import {
-  getEvidenceDownloadUrl, previewFailed, previewOf, refreshEvidence, rerunMatching, resetEvidenceState, setEvidenceArchived, updateEvidence, uploadEvidence,
+  getEvidenceDownloadUrl, parseTags, previewFailed, previewOf, refreshEvidence, rerunMatching, resetEvidenceState, setEvidenceArchived, updateEvidence, uploadEvidence,
   type EvidenceInput,
 } from "./evidence";
 import { clearCachedProjects } from "./projects";
@@ -301,4 +301,55 @@ test("signing out removes the organisation's evidence from the local copy", () =
   commit(clearCachedProjects);
   expect(stored()).toBeUndefined();
   expect(getDb().evidence).toHaveLength(elsewhere);
+});
+
+test("tags are tidied: trimmed, lower case, no blanks or repeats", () => {
+  expect(parseTags(" Conduit, level  2,,conduit , Cable Tray ")).toEqual(["conduit", "level 2", "cable tray"]);
+  expect(parseTags("   ")).toEqual([]);
+});
+
+test("upload sends the tags and reports progress until the file has been sent", async () => {
+  mocks.apiFetch.mockImplementation(async (_path: string, options: { onUploadProgress?: (f: number) => void }) => {
+    options.onUploadProgress?.(0.4);
+    return record({ metadata: { location: "Level 3", source: "mobile_upload", tags: ["slab", "level 3"], author: "Alex Owner" } });
+  });
+  const progress: number[] = [];
+
+  await uploadEvidence(PROJECT_ID, input({ tags: ["slab", "level 3"] }), { onProgress: (f) => progress.push(f) });
+
+  const form = mocks.apiFetch.mock.calls[0][1].form as FormData;
+  expect(JSON.parse(form.get("metadata") as string).tags).toEqual(["slab", "level 3"]);
+  expect(progress).toEqual([0.4, 1]);
+  expect(stored()?.metadata.tags).toEqual(["slab", "level 3"]);
+});
+
+test("a written note has nothing to upload, so it only reports that it is done", async () => {
+  mocks.apiFetch.mockResolvedValue(record({ storage_path: null, original_filename: null, mime_type: null, preview_url: null }));
+  const progress: number[] = [];
+  await uploadEvidence(PROJECT_ID, input({ file: null }), { onProgress: (f) => progress.push(f) });
+  expect(mocks.apiFetch.mock.calls[0][1].onUploadProgress).toBeUndefined();
+  expect(progress).toEqual([1]);
+});
+
+test("changing only the tags sends the whole metadata object with the new tags", async () => {
+  commit((d) => { d.evidence.push(local()); });
+  api({ [`/evidence/${EVIDENCE_ID}`]: record({ metadata: { location: "Level 3", source: "mobile_upload", tags: ["slab"], author: "Alex Owner" } }) });
+
+  await updateEvidence(EVIDENCE_ID, { title: "Level 3 slab pour", location: "Level 3", tags: ["slab"] });
+  expect(mocks.apiFetch).toHaveBeenCalledWith(`/evidence/${EVIDENCE_ID}`, {
+    method: "PATCH",
+    body: { metadata: { location: "Level 3", source: "mobile_upload", tags: ["slab"], author: "Alex Owner" } },
+  });
+
+  mocks.apiFetch.mockClear();
+  await updateEvidence(EVIDENCE_ID, { tags: ["slab"] }); // same tags again: nothing to save
+  expect(mocks.apiFetch).not.toHaveBeenCalled();
+});
+
+test("too many tags, or a tag that is too long, is refused before any request", async () => {
+  commit((d) => { d.evidence.push(local()); });
+  const many = Array.from({ length: 21 }, (_, i) => `tag ${i}`);
+  await expect(uploadEvidence(PROJECT_ID, input({ tags: many }))).rejects.toThrow("Use 20 tags or fewer");
+  await expect(updateEvidence(EVIDENCE_ID, { tags: ["x".repeat(41)] })).rejects.toThrow("Each tag must be 40 characters or fewer");
+  expect(mocks.apiFetch).not.toHaveBeenCalled();
 });

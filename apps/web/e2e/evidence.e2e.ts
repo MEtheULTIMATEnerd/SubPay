@@ -34,9 +34,10 @@ const picker = (page: Page) => page.locator('input[type="file"]').first();
 const dialog = (page: Page) => page.locator("dialog[open]");
 
 /** Upload one file through the library's upload form, with optional details. */
-async function upload(page: Page, file: typeof PHOTO, details: { shows?: string; location?: string } = {}) {
+async function upload(page: Page, file: typeof PHOTO, details: { shows?: string; location?: string; tags?: string } = {}) {
   await picker(page).setInputFiles(file);
   if (details.shows) await dialog(page).getByLabel("What does this show?").fill(details.shows);
+  if (details.tags) await dialog(page).getByLabel("Tags (optional)").fill(details.tags);
   if (details.location) await dialog(page).getByLabel("Location (optional)").fill(details.location);
   await dialog(page).getByRole("button", { name: "Upload & match" }).click();
   await expect(dialog(page)).toHaveCount(0);
@@ -49,6 +50,7 @@ test("evidence is uploaded with its details and shows in the library", async ({ 
   await expect(dialog(page).getByLabel("Title")).toHaveValue("Level2 conduit run"); // suggested from the filename
   await dialog(page).getByLabel("What does this show?").fill("Conduit installed along the Level 2 east corridor");
   await dialog(page).getByLabel("Location (optional)").fill("Level 2, east corridor");
+  await dialog(page).getByLabel("Tags (optional)").fill("Conduit, level 2, conduit");
   await dialog(page).getByRole("button", { name: "Upload & match" }).click();
 
   const card = page.getByRole("button", { name: /Level2 conduit run/ });
@@ -62,6 +64,9 @@ test("evidence is uploaded with its details and shows in the library", async ({ 
   await expect(dialog(page).getByRole("heading", { name: "EV-001 · Level2 conduit run" })).toBeVisible();
   await expect(dialog(page)).toContainText("Conduit installed along the Level 2 east corridor");
   await expect(dialog(page)).toContainText("Level2_conduit_run.png");
+  // tags are tidied: lower case, no repeats
+  await expect(dialog(page).getByText("conduit", { exact: true })).toHaveCount(1);
+  await expect(dialog(page).getByText("level 2", { exact: true })).toBeVisible();
 });
 
 test("files that are not supported are refused", async ({ page }) => {
@@ -78,7 +83,7 @@ test("files that are not supported are refused", async ({ page }) => {
 test("the library can be searched and filtered", async ({ page }) => {
   await newProjectEvidencePage(page);
   await upload(page, PHOTO, { shows: "Conduit installed along the corridor" });
-  await upload(page, DOCKET, { shows: "Supplier docket for conduit and saddles" });
+  await upload(page, DOCKET, { shows: "Supplier docket for conduit and saddles", tags: "delivery" });
 
   const photo = page.getByRole("button", { name: /Level2 conduit run/ });
   const docket = page.getByRole("button", { name: /Docket 88213/ });
@@ -86,6 +91,10 @@ test("the library can be searched and filtered", async ({ page }) => {
   await expect(docket).toBeVisible();
 
   await page.getByPlaceholder("Search evidence").fill("supplier docket");
+  await expect(docket).toBeVisible();
+  await expect(photo).toHaveCount(0);
+
+  await page.getByPlaceholder("Search evidence").fill("delivery"); // found by its tag
   await expect(docket).toBeVisible();
   await expect(photo).toHaveCount(0);
 
@@ -110,9 +119,11 @@ test("evidence details can be corrected, and evidence is archived rather than de
   await dialog(page).getByRole("button", { name: "Edit details" }).click();
   await dialog(page).getByLabel("Title").fill("Conduit run, Level 2 east");
   await dialog(page).getByLabel("Location").fill("Level 2, grid C4");
+  await dialog(page).getByLabel("Tags").fill("conduit, inspected");
   await dialog(page).getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog(page).getByRole("heading", { name: "EV-001 · Conduit run, Level 2 east" })).toBeVisible();
   await expect(dialog(page)).toContainText("Level 2, grid C4");
+  await expect(dialog(page).getByText("inspected", { exact: true })).toBeVisible();
   await expect(dialog(page)).toContainText("Level2_conduit_run.png"); // the file itself is untouched
 
   // there is no delete: archive hides it, restore brings it back

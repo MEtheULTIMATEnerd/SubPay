@@ -16,7 +16,29 @@ import { commit, getDb } from "./store";
 import type { Evidence, EvidenceType } from "./types";
 
 export type EvidenceInput = Omit<mock.EvidenceInput, "file"> & { file: File | null };
-export type EvidencePatch = Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null };
+export type EvidencePatch = Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null; tags?: string[] };
+export interface UploadOptions {
+  /** Off when the person is linking the evidence themselves: no contract-item suggestions are generated. */
+  autoMatch?: boolean;
+  /** Called with how much of the file has been sent, from 0 to 1. */
+  onProgress?: (fraction: number) => void;
+}
+
+const MAX_TAGS = 20;
+const MAX_TAG_LENGTH = 40;
+
+/** "Level 2, conduit,, Conduit " -> ["level 2", "conduit"]: trimmed, lower case, no blanks or repeats. */
+export function parseTags(text: string): string[] {
+  const tags = text.split(",").map((t) => t.trim().toLowerCase().replace(/\s+/g, " ")).filter(Boolean);
+  return [...new Set(tags)];
+}
+
+function checkTags(tags: string[] | undefined) {
+  if (!tags) return;
+  if (tags.length > MAX_TAGS) throw new ApiError(422, `Use ${MAX_TAGS} tags or fewer`, "validation_error");
+  if (tags.some((t) => t.length > MAX_TAG_LENGTH)) throw new ApiError(422, `Each tag must be ${MAX_TAG_LENGTH} characters or fewer`, "validation_error");
+}
+const sameTags = (a: string[], b: string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
 
 /** What the API returns: the record plus short-lived signed links. */
 type ApiEvidence = Omit<Evidence, "thumbnail"> & { preview_url?: string | null; download_url?: string | null };
@@ -113,18 +135,20 @@ export function previewFailed(projectId: string) {
 }
 
 // ---------- upload ----------
-/**
- * Returns the new record's id. AI processing then runs on its own; the page updates when it finishes.
- * With autoMatch off, no contract-item suggestions are generated (the person is linking it themselves).
- */
-export async function uploadEvidence(projectId: string, input: EvidenceInput, { autoMatch = true } = {}): Promise<string> {
+/** Returns the new record's id. AI processing then runs on its own; the page updates when it finishes. */
+export async function uploadEvidence(projectId: string, input: EvidenceInput, { autoMatch = true, onProgress }: UploadOptions = {}): Promise<string> {
   // The same rules in both modes. In live mode the API also checks the file's real contents.
   const { file } = input;
   if (!file && !input.description.trim()) throw new ApiError(422, "Add a file or a written note", "validation_error");
   if (file && file.size > mock.MAX_EVIDENCE_BYTES) throw new ApiError(413, "Evidence files must be 50 MB or smaller", "payload_too_large");
   if (file && !MIME_TYPES.includes(file.type) && !EXTENSIONS.test(file.name)) throw new ApiError(415, EVIDENCE_TYPES_MESSAGE, "unsupported_media_type");
   checkText(input.title, input.description, { titleRequired: false });
-  if (!LIVE) return mock.uploadEvidence(projectId, input, { autoMatch });
+  checkTags(input.tags);
+  if (!LIVE) {
+    const id = mock.uploadEvidence(projectId, input, { autoMatch });
+    onProgress?.(1); // nothing is sent anywhere in demo mode
+    return id;
+  }
 
   const author = getDb().profiles.find((p) => p.id === getDb().session?.profile_id)?.full_name;
   const form = new FormData();
@@ -134,9 +158,10 @@ export async function uploadEvidence(projectId: string, input: EvidenceInput, { 
   form.append("evidence_type", input.evidence_type);
   form.append("captured_at", input.captured_at);
   // uploaded_by, set by the API, is the record of who added it. `author` is only the name to display.
-  form.append("metadata", JSON.stringify({ location: input.location, source: input.source ?? "desktop_upload", tags: [], ...(author ? { author } : {}) }));
+  form.append("metadata", JSON.stringify({ location: input.location, source: input.source ?? "desktop_upload", tags: input.tags ?? [], ...(author ? { author } : {}) }));
 
-  const record = await apiFetch<ApiEvidence>(`/projects/${projectId}/evidence`, { method: "POST", form });
+  const record = await apiFetch<ApiEvidence>(`/projects/${projectId}/evidence`, { method: "POST", form, onUploadProgress: file ? onProgress : undefined });
+  onProgress?.(1);
   storeEvidence(record);
   mock.logAudit(projectId, "evidence.uploaded", "evidence", record.id, { title: record.title, type: record.evidence_type });
   watchProcessing(record.id, autoMatch);
@@ -201,20 +226,29 @@ export async function rerunMatching(evidenceId: string): Promise<void> {
 // ---------- editing and archiving ----------
 /** Save a person's corrections. Only what actually changed is sent; the stored file is never touched. */
 export async function updateEvidence(evidenceId: string, patch: EvidencePatch): Promise<void> {
+  checkTags(patch.tags);
   if (!LIVE) return mock.updateEvidence(evidenceId, patch);
   const current = requireStored(evidenceId);
   checkText(patch.title ?? current.title, patch.description ?? current.description, { titleRequired: true });
 
-  const { location, ...fields } = patch;
+  const { location, tags, ...fields } = patch;
   const changes: Record<string, unknown> = {};
   for (const key of Object.keys(fields) as (keyof typeof fields)[]) {
     const value = typeof fields[key] === "string" && key !== "captured_at" ? (fields[key] as string).trim() : fields[key];
     if (value !== undefined && value !== current[key]) changes[key] = value;
   }
+  // The API replaces the whole metadata object, so send everything that is already there.
+  const metadata = { ...current.metadata };
+  let metadataChanged = false;
   if (location !== undefined && (location ?? null) !== (current.metadata.location ?? null)) {
-    // The API replaces the whole metadata object, so send everything that is already there.
-    changes.metadata = { ...current.metadata, location };
+    metadata.location = location;
+    metadataChanged = true;
   }
+  if (tags !== undefined && !sameTags(tags, current.metadata.tags ?? [])) {
+    metadata.tags = tags;
+    metadataChanged = true;
+  }
+  if (metadataChanged) changes.metadata = metadata;
   if (!Object.keys(changes).length) return;
 
   storeEvidence(await apiFetch<ApiEvidence>(`/evidence/${evidenceId}`, { method: "PATCH", body: changes }));

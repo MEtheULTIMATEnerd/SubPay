@@ -8,7 +8,7 @@ import { linkEvidence, read } from "@/lib/api";
 import { matchEvidence } from "@/lib/ai";
 import { uploadEvidence } from "@/lib/evidence";
 import { thumbnail } from "@/lib/thumbnail";
-import { ErrorState, Icon, cx } from "@/components/ui";
+import { ErrorState, Icon, ProgressBar, cx } from "@/components/ui";
 
 export default function CapturePage() {
   const db = useData();
@@ -29,6 +29,7 @@ export default function CapturePage() {
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [sent, setSent] = useState(0); // share of the photo uploaded so far, 0 to 1
 
   // Live suggestions from the (mock) AI as the worker types what the photo shows.
   const suggested = db.settings.ai_available && note.trim()
@@ -52,11 +53,12 @@ export default function CapturePage() {
     if (saving) return;
     setError("");
     setSaving(true);
+    setSent(0);
     try {
       const id = await uploadEvidence(projectId, {
         file, title: file ? "Site photo" : "Site note", description: note, evidence_type: file ? "photo" : "message", captured_at: takenAt.toISOString(),
         location: location || null, thumbnail: thumb, source: "mobile_upload",
-      }, { autoMatch: !choice });
+      }, { autoMatch: !choice, onProgress: setSent });
       if (choice) linkEvidence(id, choice);
       setDone(true);
     } catch (e) {
@@ -145,8 +147,9 @@ export default function CapturePage() {
 
             {error && <div className="mt-4"><ErrorState title={error} /></div>}
             <button className="btn-dark mt-6 w-full py-5 text-lg" disabled={saving || (!file && !note.trim())} onClick={add}>
-              {saving ? "Saving…" : choice ? "Add to claim" : "Save, let SubPay suggest"}
+              {saving ? (file ? `Saving… ${Math.round(sent * 100)}%` : "Saving…") : choice ? "Add to claim" : "Save, let SubPay suggest"}
             </button>
+            {saving && file && <ProgressBar value={sent} label="Upload progress" className="mt-3" />}
             <p className="mt-4 text-center text-sm text-muted">Three taps. Works in gloves, in direct sun.</p>
           </>
         )}

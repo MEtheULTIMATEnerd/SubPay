@@ -94,7 +94,9 @@ the screens wait for that first load. After an upload the app checks the
 contract every 1.5 seconds until extraction is ready or has failed.
 
 Evidence follows it in `apps/web/lib/evidence.ts`, loaded with the contracts
-when a project is opened. Photo previews are signed links that expire after an
+when a project is opened. Contract and evidence uploads show how much of the
+file has been sent: `apiFetch` uses `XMLHttpRequest` for an upload when it is
+given an `onUploadProgress` callback, because `fetch` cannot report it. Photo previews are signed links that expire after an
 hour, so they are kept in memory only and never written to the browser's
 storage; if one fails to load the app fetches fresh links. Matching evidence
 to contract items is still mock data: in live mode it runs in the browser once

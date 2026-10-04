@@ -127,6 +127,16 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   );
 }
 
+/** A determinate progress bar. `value` runs from 0 to 1. */
+export function ProgressBar({ value, label, className }: { value: number; label: string; className?: string }) {
+  const percent = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return (
+    <div role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent} className={cx("h-1.5 overflow-hidden rounded-full bg-surface-2", className)}>
+      <div className="h-full rounded-full bg-brand transition-[width] duration-200" style={{ width: `${percent}%` }} />
+    </div>
+  );
+}
+
 // ---------- badges ----------
 // AI output and human decisions are styled differently everywhere on purpose.
 export function AiBadge({ assessment, confidence }: { assessment: Assessment; confidence: number }) {

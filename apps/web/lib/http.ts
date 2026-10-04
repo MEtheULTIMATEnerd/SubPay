@@ -12,6 +12,39 @@ interface RequestOptions {
   /** Sent as multipart/form-data, for file uploads. Use instead of `body`. */
   form?: FormData;
   query?: Record<string, string | number | undefined>;
+  /** For a `form` upload: called with how much has been sent, from 0 to 1. */
+  onUploadProgress?: (fraction: number) => void;
+}
+
+type ErrorPayload = { error?: { code?: string; message?: string; details?: ErrorDetail[] } } | null;
+const UNREACHABLE = "Can't reach the SubPay server. Check your connection and try again.";
+
+function toError(status: number, payload: ErrorPayload): ApiError {
+  return new ApiError(status, payload?.error?.message ?? "Something went wrong. Please try again.", payload?.error?.code, payload?.error?.details);
+}
+
+/** fetch() cannot report how much of an upload has been sent, so uploads that show progress use XMLHttpRequest. */
+function upload(url: URL, method: string, token: string, form: FormData, onProgress: (fraction: number) => void): Promise<{ status: number; payload: unknown }> {
+  return new Promise((resolve, reject) => {
+    const request = new XMLHttpRequest();
+    request.open(method, url.toString());
+    request.setRequestHeader("Authorization", `Bearer ${token}`);
+    request.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(Math.min(1, event.loaded / event.total));
+    };
+    request.onload = () => {
+      let payload: unknown = null;
+      try {
+        payload = request.responseText ? JSON.parse(request.responseText) : null;
+      } catch {
+        // not JSON: handled by the caller as an error with the default message
+      }
+      resolve({ status: request.status, payload });
+    };
+    request.onerror = () => reject(new ApiError(503, UNREACHABLE, "service_unavailable"));
+    request.onabort = request.onerror;
+    request.send(form);
+  });
 }
 
 let onUnauthorized: (() => void) | null = null;
@@ -21,7 +54,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-export async function apiFetch<T>(path: string, { method = "GET", body, form, query }: RequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(path: string, { method = "GET", body, form, query, onUploadProgress }: RequestOptions = {}): Promise<T> {
   const { data } = await supabase().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new ApiError(401, "Sign in to continue", "unauthenticated");
@@ -29,6 +62,16 @@ export async function apiFetch<T>(path: string, { method = "GET", body, form, qu
   const url = new URL(`${API_URL}/api/v1${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
     if (value !== undefined) url.searchParams.set(key, String(value));
+  }
+
+  if (form && onUploadProgress && typeof XMLHttpRequest !== "undefined") {
+    const { status, payload } = await upload(url, method, token, form, onUploadProgress);
+    if (status >= 200 && status < 300) {
+      onUploadProgress(1);
+      return payload as T;
+    }
+    if (status === 401) onUnauthorized?.();
+    throw toError(status, payload as ErrorPayload);
   }
 
   let response: Response;
@@ -43,22 +86,14 @@ export async function apiFetch<T>(path: string, { method = "GET", body, form, qu
       body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
-    throw new ApiError(503, "Can't reach the SubPay server. Check your connection and try again.", "service_unavailable");
+    throw new ApiError(503, UNREACHABLE, "service_unavailable");
   }
 
   if (response.ok) {
     return (response.status === 204 ? undefined : await response.json()) as T;
   }
 
-  const payload = (await response.json().catch(() => null)) as {
-    error?: { code?: string; message?: string; details?: ErrorDetail[] };
-  } | null;
-  const error = new ApiError(
-    response.status,
-    payload?.error?.message ?? "Something went wrong. Please try again.",
-    payload?.error?.code,
-    payload?.error?.details,
-  );
+  const error = toError(response.status, (await response.json().catch(() => null)) as ErrorPayload);
   if (response.status === 401) onUnauthorized?.();
   throw error;
 }

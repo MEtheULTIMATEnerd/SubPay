@@ -432,7 +432,7 @@ can be retried.
 
 - **Contract**: `processing_status` is `uploaded`, `processing`, `ready` or `failed`. A failed contract carries a user-safe `error` message.
 - **ContractItem**: `review_status` is `draft`, `confirmed` or `rejected`. `extraction_confidence` is the AI's confidence, or `null` for an item a person added. Quantity, unit, rate, amount, conditions, notice requirement and due date are all nullable, because not every contract contains them.
-- **Evidence**: `evidence_type` is `photo`, `document`, `docket`, `message` or `other`. `processing_status` has the same four values as a contract. `metadata` is a free-form object. The web app writes `location`, `source` (`desktop_upload` or `mobile_upload`), `tags` and `author` (the uploader's name, for display only; `uploaded_by` is the record of who added it).
+- **Evidence**: `evidence_type` is `photo`, `document`, `docket`, `message` or `other`. `processing_status` has the same four values as a contract. `metadata` is a free-form object. The web app writes `location`, `source` (`desktop_upload` or `mobile_upload`), `tags` (lower-case strings, up to 20, edited on the evidence screens) and `author` (the uploader's name, for display only; `uploaded_by` is the record of who added it).
 
 Upload limits for the MVP: contracts are PDF or DOCX up to 25 MB, evidence files up to 50 MB. The API refuses any request body over 60 MB.
 

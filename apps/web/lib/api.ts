@@ -305,6 +305,7 @@ export interface EvidenceInput {
   location: string | null;
   thumbnail: string | null;
   source?: string;
+  tags?: string[];
 }
 export const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024;
 
@@ -321,7 +322,7 @@ export function uploadEvidence(pid: string, input: EvidenceInput, { autoMatch = 
       storage_path: `evidence/${pid}/${id}/original.${ext}`, original_filename: input.file?.name ?? "note.txt",
       mime_type: input.file?.type || "text/plain", evidence_type: input.evidence_type, captured_at: input.captured_at,
       title: input.title.trim() || input.file?.name || "Note", description: input.description.trim(),
-      metadata: { location: input.location, source: input.source ?? "desktop_upload", tags: [], author: me(d).full_name },
+      metadata: { location: input.location, source: input.source ?? "desktop_upload", tags: input.tags ?? [], author: me(d).full_name },
       thumbnail: input.thumbnail, processing_status: autoMatch ? "processing" : "ready", archived: false, created_at: now(), updated_at: now(),
     });
     audit(d, pid, "evidence.uploaded", "evidence", id, { title: input.title, type: input.evidence_type });
@@ -368,12 +369,13 @@ export function runMatching(id: string) {
   });
 }
 
-export function updateEvidence(id: string, patch: Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null }) {
+export function updateEvidence(id: string, patch: Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null; tags?: string[] }) {
   commit((d) => {
     const ev = evidence(d, id);
-    const { location, ...rest } = patch;
+    const { location, tags, ...rest } = patch;
     Object.assign(ev, rest, { updated_at: now() });
     if (location !== undefined) ev.metadata = { ...ev.metadata, location };
+    if (tags !== undefined) ev.metadata = { ...ev.metadata, tags };
     audit(d, ev.project_id, "evidence.edited", "evidence", id, { evidence: ev.code });
   });
 }

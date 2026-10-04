@@ -73,9 +73,16 @@ export async function getContractDownloadUrl(contractId: string): Promise<string
 }
 
 // ---------- upload and extraction ----------
-/** Returns the new contract's id. Extraction then runs on its own; the page updates when it finishes. */
-export async function uploadContract(projectId: string, file: File): Promise<string> {
-  if (!LIVE) return mock.uploadContract(projectId, file);
+/**
+ * Returns the new contract's id. Extraction then runs on its own; the page updates when it finishes.
+ * `onProgress` is called with how much of the file has been sent, from 0 to 1.
+ */
+export async function uploadContract(projectId: string, file: File, onProgress?: (fraction: number) => void): Promise<string> {
+  if (!LIVE) {
+    const id = mock.uploadContract(projectId, file);
+    onProgress?.(1); // nothing is sent anywhere in demo mode
+    return id;
+  }
 
   // The API checks the file's real contents. These are the same rules, for an instant answer.
   if (!mock.CONTRACT_TYPES.includes(file.type) && !/\.(pdf|docx)$/i.test(file.name)) {
@@ -85,7 +92,8 @@ export async function uploadContract(projectId: string, file: File): Promise<str
 
   const form = new FormData();
   form.append("file", file, file.name);
-  const contract = await apiFetch<Contract>(`/projects/${projectId}/contracts`, { method: "POST", form });
+  const contract = await apiFetch<Contract>(`/projects/${projectId}/contracts`, { method: "POST", form, onUploadProgress: onProgress });
+  onProgress?.(1);
   storeContract(contract);
   mock.logAudit(projectId, "contract.uploaded", "contract", contract.id, { filename: contract.original_filename });
   watchExtraction(contract.id);

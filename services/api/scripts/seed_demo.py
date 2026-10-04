@@ -152,6 +152,20 @@ def demo_evidence() -> list[DemoEvidence]:
             "Received in good order on site.",
         ]
     )
+    instruction = make_pdf(
+        [
+            "SITE INSTRUCTION SI-014 (fictional demo document)",
+            "From: Northbank Builders, site manager",
+            "To: electrical subcontractor",
+            "",
+            "Install six additional double power outlets in tenancy 3, Level 2,",
+            "at the positions marked on drawing E-203 revision C.",
+            "",
+            "This work is not included in the subcontract schedule of rates.",
+        ]
+    )
+    # The first four match the team's agreed example:
+    # EV-001 and EV-002 site photos, EV-003 a docket, EV-004 a site instruction.
     return [
         DemoEvidence(
             title="Conduit run, Level 2 east corridor",
@@ -163,7 +177,7 @@ def demo_evidence() -> list[DemoEvidence]:
             days_ago=12,
             location="Level 2, east corridor",
             file=("IMG_2041.png", make_png((70, 110, 150), (240, 200, 60)), "image/png"),
-            tags=["conduit"],
+            tags=["conduit", "level 2"],
         ),
         DemoEvidence(
             title="Conduit run, Level 2 west corridor",
@@ -172,16 +186,7 @@ def demo_evidence() -> list[DemoEvidence]:
             days_ago=9,
             location="Level 2, west corridor",
             file=("IMG_2063.png", make_png((60, 120, 110), (240, 200, 60)), "image/png"),
-            tags=["conduit"],
-        ),
-        DemoEvidence(
-            title="Cable tray above ceiling grid",
-            description="Cable tray installed above the ceiling grid, grid lines B3 to B6.",
-            evidence_type="photo",
-            days_ago=8,
-            location="Level 2, grid B3 to B6",
-            file=("IMG_2077.png", make_png((95, 95, 105), (200, 80, 60)), "image/png"),
-            tags=["cable tray"],
+            tags=["conduit", "level 2"],
         ),
         DemoEvidence(
             title="Delivery docket 88213, conduit and cable tray",
@@ -191,15 +196,29 @@ def demo_evidence() -> list[DemoEvidence]:
             location="Site gate",
             source="desktop_upload",
             file=("Docket_88213.pdf", docket, "application/pdf"),
+            tags=["delivery"],
         ),
         DemoEvidence(
-            title="Timesheet, electrical crew",
-            description="Crew hours for conduit, cable tray and switchboard positioning.",
+            title="Site instruction SI-014, extra power outlets in tenancy 3",
+            description=(
+                "Builder's written instruction for six extra double power outlets in tenancy 3. "
+                "Not in the subcontract schedule."
+            ),
             evidence_type="document",
-            days_ago=6,
-            location=None,
+            days_ago=3,
+            location="Level 2, tenancy 3",
             source="desktop_upload",
-            file=("Timesheet_electrical_crew.csv", timesheet, "text/csv"),
+            file=("Site_instruction_SI-014.pdf", instruction, "application/pdf"),
+            tags=["site instruction"],
+        ),
+        DemoEvidence(
+            title="Cable tray above ceiling grid",
+            description="Cable tray installed above the ceiling grid, grid lines B3 to B6.",
+            evidence_type="photo",
+            days_ago=8,
+            location="Level 2, grid B3 to B6",
+            file=("IMG_2077.png", make_png((95, 95, 105), (200, 80, 60)), "image/png"),
+            tags=["cable tray", "level 2"],
         ),
         DemoEvidence(
             title="Switchboard MSB-2 delivered and positioned",
@@ -214,6 +233,16 @@ def demo_evidence() -> list[DemoEvidence]:
             tags=["switchboard"],
         ),
         DemoEvidence(
+            title="Timesheet, electrical crew",
+            description="Crew hours for conduit, cable tray and switchboard positioning.",
+            evidence_type="document",
+            days_ago=6,
+            location=None,
+            source="desktop_upload",
+            file=("Timesheet_electrical_crew.csv", timesheet, "text/csv"),
+            tags=["labour"],
+        ),
+        DemoEvidence(
             title="Phone call with site supervisor",
             description=(
                 "Site supervisor confirmed by phone that the Level 2 conduit rough-in "
@@ -223,16 +252,6 @@ def demo_evidence() -> list[DemoEvidence]:
             days_ago=4,
             location=None,
             source="desktop_upload",
-        ),
-        DemoEvidence(
-            title="Extra power outlets requested for tenancy 3",
-            description=(
-                "Builder's site manager asked for six extra double power outlets in tenancy 3. "
-                "Not in the subcontract schedule. Written direction requested."
-            ),
-            evidence_type="message",
-            days_ago=3,
-            location="Level 2, tenancy 3",
         ),
         DemoEvidence(
             title="Conduit run, Level 2 east corridor (blurred)",
