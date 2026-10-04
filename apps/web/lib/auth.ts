@@ -12,6 +12,7 @@ import * as mock from "./api";
 import { LIVE } from "./env";
 import { ApiError, isApiError } from "./errors";
 import { apiFetch, setUnauthorizedHandler } from "./http";
+import { resetProjectData } from "./project-data";
 import { clearCachedProjects, refreshProjects } from "./projects";
 import { commit, getDb } from "./store";
 import { supabase } from "./supabase";
@@ -76,6 +77,7 @@ function mirror(me: Me) {
 function clearLocalSession() {
   lastMe = null;
   syncedUserId = null;
+  resetProjectData();
   if (getDb().session)
     commit((d) => {
       clearCachedProjects(d);

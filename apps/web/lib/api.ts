@@ -185,9 +185,14 @@ export function updateProfile(full_name: string) {
 export const resetDemo = () => resetDb(getDb().session);
 export const setAiAvailable = (v: boolean) => commit((d) => { d.settings.ai_available = v; });
 
-/** Lets live-mode code (lib/projects.ts) record activity in the audit trail, which is still mock data. */
-export function logAudit(project_id: string | null, action: string, entity: string, entity_id: string, metadata: Record<string, unknown> = {}) {
-  commit((d) => audit(d, project_id, action, entity, entity_id, metadata));
+/** Lets live-mode code (lib/projects.ts, lib/contracts.ts) record activity in the audit trail, which is still mock data. */
+export function logAudit(project_id: string | null, action: string, entity: string, entity_id: string, metadata: Record<string, unknown> = {}, ai = false) {
+  commit((d) => audit(d, project_id, action, entity, entity_id, metadata, ai));
+}
+
+/** Lets live-mode code raise a notification for the organisation. Notifications are still mock data. */
+export function notifyTeam(project_id: string, title: string, body: string, href: string) {
+  commit((d) => notify(d, project_id, title, body, href));
 }
 
 // ---------- F02 projects ----------
@@ -217,6 +222,8 @@ export function setProjectStatus(id: string, status: Project["status"]) {
 }
 
 // ---------- F03/F04 contracts ----------
+// Demo mode only. With Supabase configured, lib/contracts.ts calls the API
+// instead. UI code should import from lib/contracts.ts.
 export const CONTRACT_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 export const MAX_CONTRACT_BYTES = 25 * 1024 * 1024;
 

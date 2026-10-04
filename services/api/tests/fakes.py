@@ -243,6 +243,24 @@ class FakeContractRepository:
             added.append(ContractItem.model_validate(row))
         return added
 
+    _CONTENT_FIELDS = (
+        "item_code", "description", "quantity", "unit", "rate", "amount",
+        "conditions", "notice_requirement", "due_date",
+    )  # fmt: skip
+
+    def update_item(self, item_id: UUID, changes: dict[str, Any]) -> ContractItem | None:
+        row = self._db.contract_items.get(item_id)
+        if row is None or self._visible(row["contract_id"]) is None:
+            return None
+        before = dict(row)
+        row.update(changes, updated_at=_now())
+        # What the database trigger contract_items_track_review does:
+        if any(row.get(f) != before.get(f) for f in self._CONTENT_FIELDS):
+            row["edited_by_human"] = True
+        if row["review_status"] != before["review_status"]:
+            row["reviewed_by"] = None if row["review_status"] == "draft" else self._user_id
+        return ContractItem.model_validate(row)
+
 
 class FakeStorage:
     """Files kept in memory. Like the real buckets: private, and never overwritten."""

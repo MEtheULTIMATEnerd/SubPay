@@ -140,9 +140,10 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 | GET | `/api/v1/contracts/{contract_id}` | Get one contract, including a signed download URL | Live |
 | POST | `/api/v1/contracts/{contract_id}/extract` | Run extraction again after a failure | Live |
 | GET | `/api/v1/contracts/{contract_id}/items` | List extracted contract items in schedule order | Live |
-| PATCH | `/api/v1/contract-items/{item_id}` | Human edit of an extracted item | Mock |
-| POST | `/api/v1/contract-items/{item_id}/confirm` | Human confirms an item | Mock |
-| POST | `/api/v1/contract-items/{item_id}/reject` | Human rejects an item | Mock |
+| PATCH | `/api/v1/contract-items/{item_id}` | Human edit of an extracted item | Live |
+| POST | `/api/v1/contract-items/{item_id}/confirm` | Human confirms an item | Live |
+| POST | `/api/v1/contract-items/{item_id}/reject` | Human rejects an item | Live |
+| POST | `/api/v1/contract-items/{item_id}/reopen` | Return an item to draft | Live |
 | POST | `/api/v1/projects/{project_id}/evidence` | Upload evidence (file and/or written note) with metadata | Mock |
 | GET | `/api/v1/projects/{project_id}/evidence` | List evidence. Filters: `q`, `evidence_type`, `from`, `to`, `archived` | Mock |
 | GET | `/api/v1/evidence/{evidence_id}` | Get one evidence record, including a signed URL | Mock |
@@ -316,6 +317,30 @@ edited, confirmed or rejected.
 `GET /api/v1/contracts/{contract_id}/items` returns `{ "items": [ContractItem] }`.
 Every extracted item arrives as `review_status: "draft"` with
 `extraction_confidence` and an `extracted_values` snapshot of the AI's answer.
+
+### Reviewing contract items
+
+`PATCH /api/v1/contract-items/{item_id}` is a human edit. It accepts any of:
+
+| Field | Type | Rules |
+|---|---|---|
+| `description` | string | 1 to 2000 characters. Cannot be null. |
+| `quantity`, `rate`, `amount` | number or null | Not negative. `null` means "not in the contract". |
+| `unit`, `conditions`, `notice_requirement` | string or null | A blank string is stored as `null`. |
+| `due_date` | date or null | |
+
+At least one of these must be sent. Anything else in the body is ignored, so
+an edit cannot change `review_status`, `reviewed_by`, `edited_by_human`,
+`extraction_confidence`, `extracted_values`, `item_code` or `contract_id`.
+
+An edit that changes a value sets `edited_by_human: true`. The AI's original
+stays in `extracted_values`. Sending the same values back is not an edit.
+Editing does not change the review status.
+
+`POST .../confirm`, `.../reject` and `.../reopen` set `review_status` to
+`confirmed`, `rejected` and `draft`. They take no body, are safe to repeat,
+and return the updated ContractItem. `reviewed_by` is set to the caller on
+confirm and reject, and cleared on reopen.
 
 - **Contract**: `processing_status` is `uploaded`, `processing`, `ready` or `failed`. A failed contract carries a user-safe `error` message.
 - **ContractItem**: `review_status` is `draft`, `confirmed` or `rejected`. `extraction_confidence` is the AI's confidence, or `null` for an item a person added. Quantity, unit, rate, amount, conditions, notice requirement and due date are all nullable, because not every contract contains them.

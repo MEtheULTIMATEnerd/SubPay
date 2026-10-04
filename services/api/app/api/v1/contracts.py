@@ -1,7 +1,8 @@
-"""Contract upload and management (F03) and the extraction workflow (F04).
+"""Contract upload and management (F03), the extraction workflow (F04) and
+human review of the extracted line items (F05).
 
-A contract in another organisation is indistinguishable from one that does
-not exist: both are a 404.
+A contract or item in another organisation is indistinguishable from one that
+does not exist: both are a 404.
 """
 
 from typing import Annotated
@@ -10,7 +11,14 @@ from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, File, UploadFile, status
 
 from app.api.deps import Contracts
-from app.schemas.contracts import Contract, ContractDetail, ContractItemList, ContractList
+from app.schemas.contracts import (
+    Contract,
+    ContractDetail,
+    ContractItem,
+    ContractItemList,
+    ContractItemUpdate,
+    ContractList,
+)
 from app.services import uploads
 from app.services.contracts import MAX_CONTRACT_BYTES
 
@@ -75,3 +83,43 @@ def retry_extraction(
 )
 def list_contract_items(contract_id: UUID, contracts: Contracts) -> ContractItemList:
     return ContractItemList(items=contracts.list_items(contract_id))
+
+
+@router.patch(
+    "/contract-items/{item_id}",
+    response_model=ContractItem,
+    summary="Correct an extracted line item",
+)
+def edit_contract_item(
+    item_id: UUID, body: ContractItemUpdate, contracts: Contracts
+) -> ContractItem:
+    """A human edit. The item is flagged `edited_by_human` and the AI's original
+    values stay in `extracted_values`."""
+    return contracts.edit_item(item_id, body.changes())
+
+
+@router.post(
+    "/contract-items/{item_id}/confirm",
+    response_model=ContractItem,
+    summary="Confirm a line item",
+)
+def confirm_contract_item(item_id: UUID, contracts: Contracts) -> ContractItem:
+    return contracts.review_item(item_id, "confirmed")
+
+
+@router.post(
+    "/contract-items/{item_id}/reject",
+    response_model=ContractItem,
+    summary="Reject a line item",
+)
+def reject_contract_item(item_id: UUID, contracts: Contracts) -> ContractItem:
+    return contracts.review_item(item_id, "rejected")
+
+
+@router.post(
+    "/contract-items/{item_id}/reopen",
+    response_model=ContractItem,
+    summary="Return a line item to draft",
+)
+def reopen_contract_item(item_id: UUID, contracts: Contracts) -> ContractItem:
+    return contracts.review_item(item_id, "draft")

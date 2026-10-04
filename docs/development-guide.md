@@ -61,8 +61,8 @@ In the Supabase dashboard, under Authentication:
 - URL Configuration: set the Site URL to `http://localhost:3000` for local development.
 - Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing.
 
-Sign-in, the profile and projects are live. Contracts, evidence and claims
-still use mock data in the browser, in both modes. A new live account starts
+Sign-in, the profile, projects, contracts and contract item review are live.
+Evidence and claims still use mock data in the browser, in both modes. A new live account starts
 with no projects, because the seeded demo project belongs to the demo
 organisation.
 

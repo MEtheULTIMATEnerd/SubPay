@@ -70,6 +70,10 @@ export interface ContractItem {
   edited_by_human: boolean;
   reviewed_by: string | null;
   source_reference: string | null;
+  /** The values exactly as the AI returned them. Set by the API; absent in demo mode. */
+  extracted_values?: Record<string, unknown> | null;
+  /** Position in the contract's schedule. Set by the API; absent in demo mode. */
+  sort_order?: number;
   created_at: string;
   updated_at: string;
 }

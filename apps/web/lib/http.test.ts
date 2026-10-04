@@ -43,6 +43,18 @@ test("sends a JSON body on writes", async () => {
   expect(JSON.parse(init.body as string)).toEqual({ name: "Hume St Tower" });
 });
 
+test("sends a file upload as a form and lets the browser set the content type", async () => {
+  fetchMock.mockResolvedValue(json(201, { id: "c1" }));
+  const form = new FormData();
+  form.append("file", new File(["%PDF-"], "contract.pdf", { type: "application/pdf" }));
+  await apiFetch("/projects/p1/contracts", { method: "POST", form });
+
+  const { init, headers } = lastCall();
+  expect(init.body).toBe(form);
+  expect(headers["Content-Type"]).toBeUndefined(); // the multipart boundary is added by the browser
+  expect(headers.Authorization).toBe("Bearer user-token");
+});
+
 test("makes no request when nobody is signed in", async () => {
   mocks.getSession.mockResolvedValue({ data: { session: null } });
   await expect(apiFetch("/me")).rejects.toMatchObject({ status: 401, code: "unauthenticated" });

@@ -7,7 +7,10 @@ import { supabase } from "./supabase";
 
 interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Sent as JSON. */
   body?: unknown;
+  /** Sent as multipart/form-data, for file uploads. Use instead of `body`. */
+  form?: FormData;
   query?: Record<string, string | number | undefined>;
 }
 
@@ -18,7 +21,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-export async function apiFetch<T>(path: string, { method = "GET", body, query }: RequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(path: string, { method = "GET", body, form, query }: RequestOptions = {}): Promise<T> {
   const { data } = await supabase().auth.getSession();
   const token = data.session?.access_token;
   if (!token) throw new ApiError(401, "Sign in to continue", "unauthenticated");
@@ -34,9 +37,10 @@ export async function apiFetch<T>(path: string, { method = "GET", body, query }:
       method,
       headers: {
         Authorization: `Bearer ${token}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        // For a form the browser sets Content-Type itself, including the boundary.
+        ...(body === undefined || form ? {} : { "Content-Type": "application/json" }),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: form ?? (body === undefined ? undefined : JSON.stringify(body)),
     });
   } catch {
     throw new ApiError(503, "Can't reach the SubPay server. Check your connection and try again.", "service_unavailable");

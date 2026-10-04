@@ -30,6 +30,8 @@ class ContractRepository(Protocol):
 
     def add_items(self, rows: list[dict[str, Any]]) -> list[ContractItem]: ...
 
+    def update_item(self, item_id: UUID, changes: dict[str, Any]) -> ContractItem | None: ...
+
 
 class SupabaseContractRepository:
     def __init__(self, rest: SupabaseRest) -> None:
@@ -78,3 +80,8 @@ class SupabaseContractRepository:
             ContractItem.model_validate(row)
             for row in self._rest.insert_many("contract_items", rows)
         ]
+
+    def update_item(self, item_id: UUID, changes: dict[str, Any]) -> ContractItem | None:
+        # The database records who reviewed the item and flags human edits.
+        rows = self._rest.update("contract_items", {"id": f"eq.{item_id}"}, changes)
+        return ContractItem.model_validate(rows[0]) if rows else None

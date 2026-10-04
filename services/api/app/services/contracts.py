@@ -19,7 +19,7 @@ from app.ai.extraction import (
 from app.core import errors
 from app.db.storage import FileStorage
 from app.repositories.contracts import ContractRepository
-from app.schemas.contracts import Contract, ContractDetail, ContractItem
+from app.schemas.contracts import Contract, ContractDetail, ContractItem, ReviewStatus
 from app.services import uploads
 
 logger = logging.getLogger("subpay.api.contracts")
@@ -163,6 +163,23 @@ class ContractService:
                 }
             )
         return len(self._repository.add_items(rows))
+
+    # ---- human review (F05) --------------------------------------------------
+
+    def edit_item(self, item_id: UUID, changes: dict) -> ContractItem:
+        """A person corrects an extracted item. The AI's original values are kept
+        in extracted_values and the item is flagged as edited by the database."""
+        item = self._repository.update_item(item_id, changes)
+        if item is None:
+            raise errors.not_found("Contract item")
+        return item
+
+    def review_item(self, item_id: UUID, status: ReviewStatus) -> ContractItem:
+        """Confirm, reject or reopen an item. The database records who did it."""
+        item = self._repository.update_item(item_id, {"review_status": status})
+        if item is None:
+            raise errors.not_found("Contract item")
+        return item
 
     # ---- helpers -------------------------------------------------------------
 

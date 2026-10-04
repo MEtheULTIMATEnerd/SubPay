@@ -88,6 +88,11 @@ Supabase directly.
 - `components/shell.tsx` protects routes: until the saved session has been checked nobody counts as signed in, and signed-out visitors are sent to `/login`. This is a convenience for the user. The real protection is that the API and the database refuse requests without a valid token.
 - A `401` from the API signs the user out.
 
+Contracts follow it too, in `apps/web/lib/contracts.ts`. A project's contracts
+and items are loaded when the project is opened (`lib/project-data.ts`), and
+the screens wait for that first load. After an upload the app checks the
+contract every 1.5 seconds until extraction is ready or has failed.
+
 Projects follow the same shape in `apps/web/lib/projects.ts`: `createProject`,
 `updateProject`, `setProjectStatus` and `refreshProjects`. In live mode the API
 is the source of truth and the local store holds a copy of the organisation's
@@ -164,7 +169,7 @@ Updated as each piece lands.
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Done. The web app uses them in live mode. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
-| Contracts and contract items | Database, storage and API done: upload, list, get with download link, extraction (mock provider) and retry. Item review endpoints and web wiring not started: the screens still use mock data. |
+| Contracts and contract items | Done. Upload, list, download link, extraction (mock provider), retry, and human review (edit, confirm, reject, reopen). The contract and item review screens use the API in live mode. |
 | Evidence | Database tables and storage bucket done. API and web wiring not started. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |

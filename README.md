@@ -72,6 +72,7 @@ apps/web/
 | `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
 | `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
 | project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
+| contract and contract item functions in `lib/api.ts` | `/api/v1/.../contracts` and `/api/v1/contract-items`. **Done** in live mode: see `lib/contracts.ts`. | Kinori |
 | other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Kinori / Rehan |
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
 | `thumbnail` previews / file metadata | Supabase Storage with signed URLs | Kinori |
