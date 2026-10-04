@@ -12,6 +12,7 @@ import * as mock from "./api";
 import { LIVE } from "./env";
 import { ApiError, isApiError } from "./errors";
 import { apiFetch, setUnauthorizedHandler } from "./http";
+import { clearCachedProjects, refreshProjects } from "./projects";
 import { commit, getDb } from "./store";
 import { supabase } from "./supabase";
 import type { Organisation, Profile } from "./types";
@@ -75,12 +76,17 @@ function mirror(me: Me) {
 function clearLocalSession() {
   lastMe = null;
   syncedUserId = null;
-  if (getDb().session) commit((d) => { d.session = null; });
+  if (getDb().session)
+    commit((d) => {
+      clearCachedProjects(d);
+      d.session = null;
+    });
 }
 
 async function loadProfile(userId: string) {
   try {
     mirror(await apiFetch<Me>("/me"));
+    await refreshProjects(); // pages can render straight away once the user is let in
     syncedUserId = userId;
     setState({ ready: true, error: null });
   } catch (err) {
@@ -207,8 +213,13 @@ export async function updateProfileName(fullName: string): Promise<void> {
   mirror(await apiFetch<Me>("/me", { method: "PATCH", body: { full_name: fullName } }));
 }
 
-/** Restore the seeded demo data without signing the current user out. */
+/** Restore the seeded demo data without signing the current user out or losing their real projects. */
 export function resetDemoData() {
+  const me = lastMe;
+  const mine = LIVE && me ? getDb().projects.filter((p) => p.organisation_id === me.organisation.id) : [];
   mock.resetDemo();
-  if (LIVE && lastMe) mirror(lastMe);
+  if (LIVE && me) {
+    mirror(me);
+    commit((d) => { d.projects.push(...mine); });
+  }
 }

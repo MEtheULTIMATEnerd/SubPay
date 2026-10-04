@@ -34,7 +34,7 @@ Click **Continue as demo user** (Ollie Reid, Kearney Formwork Pty Ltd). Any pass
 
 That is **demo mode**, the default. To use real Supabase sign-in and the API instead (**live mode**), copy `apps/web/.env.example` to `apps/web/.env.local`, fill it in, and follow [docs/development-guide.md](docs/development-guide.md).
 
-Checks: `npm test` (Vitest), `npm run typecheck`, `npm run lint`, `npm run build`.
+Checks: `npm test` (Vitest), `npm run test:e2e` (Playwright), `npm run typecheck`, `npm run lint`, `npm run build`.
 
 ## Demo script (Hume St Tower, Claim #7)
 
@@ -71,11 +71,12 @@ apps/web/
 |---|---|---|
 | `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
 | `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
-| other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints | Kinori / Rehan |
+| project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
+| other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Kinori / Rehan |
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
 | `thumbnail` previews / file metadata | Supabase Storage with signed URLs | Kinori |
 
-Pages only call `lib/api.ts`, so the swap doesn't touch the UI.
+Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/projects.ts`), so the swap is made one feature at a time.
 
 ## Prototype limits (deliberate)
 

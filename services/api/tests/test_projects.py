@@ -131,7 +131,10 @@ def test_create_rejects_end_date_before_start_date(client: TestClient, as_user: 
         headers=as_user(),
     )
     assert response.status_code == 422
-    assert "End date must not be before start date" in response.text
+    # the message is shown to the user as-is, so it must not carry framework prefixes
+    assert [d["message"] for d in response.json()["error"]["details"]] == [
+        "End date must not be before start date"
+    ]
 
 
 def test_user_without_a_profile_cannot_create_projects(

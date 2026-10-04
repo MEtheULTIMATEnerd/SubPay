@@ -105,7 +105,11 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         details = [
-            {"field": _field_name(tuple(err.get("loc", ()))), "message": err.get("msg", "Invalid")}
+            {
+                "field": _field_name(tuple(err.get("loc", ()))),
+                # Pydantic prefixes messages from our own validators with "Value error, ".
+                "message": str(err.get("msg", "Invalid")).removeprefix("Value error, "),
+            }
             for err in exc.errors()
         ]
         return JSONResponse(

@@ -35,6 +35,16 @@ const ME = {
   organisation: { id: ORG_ID, name: "Org A Formwork", created_at: at, updated_at: at },
 };
 const session = { access_token: "token", user: { id: USER_ID } };
+const PROJECT = {
+  id: "5a0d8a0e-2c9b-4a55-8a8e-0a2b9a6c1d22", organisation_id: ORG_ID, name: "Real Tower", client_name: "Builder", site_address: "",
+  status: "active" as const, start_date: null, end_date: null, created_by: USER_ID, created_at: at, updated_at: at,
+};
+
+/** The API answers normally: /me returns the profile, /projects returns the organisation's projects. */
+function apiAnswers(me = ME, projects = [PROJECT]) {
+  mocks.apiFetch.mockImplementation(async (path: string) => (path === "/projects" ? { items: projects } : me));
+}
+const callsTo = (path: string) => mocks.apiFetch.mock.calls.filter(([p]) => p === path).length;
 
 // auth.ts keeps module-level state, so every test gets a fresh copy of it and of the store.
 async function load() {
@@ -50,7 +60,7 @@ beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset());
   mocks.signOut.mockResolvedValue({ error: null });
   mocks.signInWithPassword.mockResolvedValue({ data: { user: session.user, session }, error: null });
-  mocks.apiFetch.mockResolvedValue(ME);
+  apiAnswers();
 });
 
 test("sign-in loads the profile from the API and signs the user into the app", async () => {
@@ -62,6 +72,15 @@ test("sign-in loads the profile from the API and signs the user into the app", a
   expect(me()).toMatchObject({ id: USER_ID, full_name: "Alex Owner", organisation_id: ORG_ID });
   expect(store.getDb().organisations.find((o) => o.id === ORG_ID)?.name).toBe("Org A Formwork");
   expect(auth.getAuthState()).toEqual({ ready: true, error: null });
+});
+
+test("sign-in also loads the organisation's projects, so pages can render straight away", async () => {
+  const { auth, store, api } = await load();
+  await auth.signIn("alex@subpay.test", "pw");
+
+  expect(api.read.projects(store.getDb()).map((p) => p.name)).toEqual(["Real Tower"]);
+  // seeded demo projects belong to another organisation and stay invisible
+  expect(api.read.project(store.getDb(), "prj-hume")).toBeNull();
 });
 
 test("wrong credentials give a friendly error and no session", async () => {
@@ -112,7 +131,7 @@ test("if the API is unreachable the user is not let into the app", async () => {
   expect(me()).toBeNull();
   expect(mocks.signOut).not.toHaveBeenCalled(); // the Supabase session is fine; a retry can succeed
 
-  mocks.apiFetch.mockResolvedValue(ME);
+  apiAnswers();
   await auth.signIn("alex@subpay.test", "pw");
   expect(me()?.id).toBe(USER_ID);
   expect(auth.getAuthState().error).toBeNull();
@@ -166,6 +185,15 @@ test("sign-out leaves the app and ends the Supabase session", async () => {
   expect(mocks.signOut).toHaveBeenCalledOnce();
 });
 
+test("sign-out removes the organisation's projects from the browser's copy", async () => {
+  const { auth, store } = await load();
+  await auth.signIn("alex@subpay.test", "pw");
+  expect(store.getDb().projects.some((p) => p.id === PROJECT.id)).toBe(true);
+
+  await auth.signOut();
+  expect(store.getDb().projects.some((p) => p.organisation_id === ORG_ID)).toBe(false);
+});
+
 test("updating the name saves through the API and updates the app", async () => {
   const { auth, me } = await load();
   await auth.signIn("alex@subpay.test", "pw");
@@ -182,6 +210,7 @@ test("resetting the demo data keeps the user signed in", async () => {
   auth.resetDemoData();
   expect(me()?.id).toBe(USER_ID);
   expect(store.getDb().projects.some((p) => p.name === "Hume St Tower")).toBe(true);
+  expect(store.getDb().projects.some((p) => p.id === PROJECT.id)).toBe(true); // real projects are kept
 });
 
 test("a saved session is restored on page load", async () => {
@@ -198,7 +227,8 @@ test("a saved session is restored on page load", async () => {
     notify("SIGNED_IN", session); // Supabase often sends both
     await vi.runAllTimersAsync();
 
-    expect(mocks.apiFetch).toHaveBeenCalledOnce();
+    expect(callsTo("/me")).toBe(1);
+    expect(callsTo("/projects")).toBe(1);
     expect(me()?.id).toBe(USER_ID);
     expect(auth.getAuthState()).toEqual({ ready: true, error: null });
   } finally {

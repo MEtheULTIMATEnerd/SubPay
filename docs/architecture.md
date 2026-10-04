@@ -88,6 +88,14 @@ Supabase directly.
 - `components/shell.tsx` protects routes: until the saved session has been checked nobody counts as signed in, and signed-out visitors are sent to `/login`. This is a convenience for the user. The real protection is that the API and the database refuse requests without a valid token.
 - A `401` from the API signs the user out.
 
+Projects follow the same shape in `apps/web/lib/projects.ts`: `createProject`,
+`updateProject`, `setProjectStatus` and `refreshProjects`. In live mode the API
+is the source of truth and the local store holds a copy of the organisation's
+projects, loaded at sign-in and refreshed when the dashboard or project list
+opens. Pages keep reading from the store, so they render without waiting, and
+the features that still run on mock data can attach to real project ids. The
+copy is removed from the browser at sign-out.
+
 The web app has two modes, chosen by environment variables at build time:
 
 | Mode | When | Behaviour |
@@ -148,7 +156,7 @@ Updated as each piece lands.
 | Repository structure and shared docs | Done |
 | Database migrations: organisations, profiles, projects, RLS | Done. Not yet applied to a shared Supabase project. |
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
-| Profile and project endpoints | Done in the API. The web app still uses its mock for them. |
+| Profile and project endpoints | Done. The web app uses them in live mode. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
 | Contracts, contract items, evidence, storage | Not started. Mock only. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
@@ -156,11 +164,18 @@ Updated as each piece lands.
 
 ### Moving from the prototype to the real backend
 
-Pages only call `apps/web/lib/api.ts`. Each function in that file maps to one
-endpoint in [api-contracts.md](api-contracts.md). Replacing a mock function
-with a `fetch` call to its endpoint moves that feature onto the real backend
-without changing the screens. Entity shapes are in `apps/web/lib/types.ts` and
-match [database-schema.md](database-schema.md).
+Each function in `apps/web/lib/api.ts` (the mock) maps to one endpoint in
+[api-contracts.md](api-contracts.md). To move a feature onto the real backend,
+follow what `lib/auth.ts` and `lib/projects.ts` do:
+
+1. Create `lib/<feature>.ts` that exports the same operations as async functions.
+2. In live mode (`LIVE` from `lib/env.ts`) call the API with `apiFetch` from `lib/http.ts` and write the result into the store. In demo mode call the existing mock function.
+3. Change the screens to import from `lib/<feature>.ts` and to `await` the calls.
+4. Add Vitest tests for both modes, as `lib/projects.test.ts` and `lib/projects.demo.test.ts` do.
+
+Reads (`read.*` in `lib/api.ts`) do not change, because they read the store.
+Entity shapes are in `apps/web/lib/types.ts` and match
+[database-schema.md](database-schema.md).
 
 ## 8. Decisions
 

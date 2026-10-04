@@ -61,8 +61,10 @@ In the Supabase dashboard, under Authentication:
 - URL Configuration: set the Site URL to `http://localhost:3000` for local development.
 - Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing.
 
-Only sign-in and the profile are live so far. Projects, contracts, evidence and
-claims still use mock data in the browser, in both modes.
+Sign-in, the profile and projects are live. Contracts, evidence and claims
+still use mock data in the browser, in both modes. A new live account starts
+with no projects, because the seeded demo project belongs to the demo
+organisation.
 
 ## 4. Run the API
 
@@ -169,8 +171,13 @@ Run these before opening a merge request. All of them must pass.
 npm run lint
 npm run build        # also generates the route types that typecheck needs
 npm run typecheck
-npm test             # Vitest
+npm test             # Vitest unit tests
+npm run test:e2e     # Playwright browser tests, desktop and phone-sized
 ```
+
+The browser tests need a one-off `npx playwright install chromium`. They build
+the app and run it in demo mode on port 3100, so they need no Supabase project
+and no API, and they ignore your `.env.local`.
 
 On a fresh clone, run `npm run build` (or `npm run dev` once) before
 `npm run typecheck`. Next.js generates route types such as `LayoutProps` at
@@ -184,7 +191,8 @@ ruff check .
 ruff format --check .
 ```
 
-End-to-end tests with Playwright are added with the features that need them.
+New screens add their own Playwright tests under `apps/web/e2e/`, in files
+named `*.e2e.ts`.
 
 ## 8. Git workflow
 

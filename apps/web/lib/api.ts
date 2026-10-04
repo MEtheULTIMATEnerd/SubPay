@@ -185,9 +185,16 @@ export function updateProfile(full_name: string) {
 export const resetDemo = () => resetDb(getDb().session);
 export const setAiAvailable = (v: boolean) => commit((d) => { d.settings.ai_available = v; });
 
+/** Lets live-mode code (lib/projects.ts) record activity in the audit trail, which is still mock data. */
+export function logAudit(project_id: string | null, action: string, entity: string, entity_id: string, metadata: Record<string, unknown> = {}) {
+  commit((d) => audit(d, project_id, action, entity, entity_id, metadata));
+}
+
 // ---------- F02 projects ----------
+// Demo mode only. With Supabase configured, lib/projects.ts calls /api/v1/projects
+// instead. UI code should import from lib/projects.ts.
 type ProjectInput = Pick<Project, "name" | "client_name" | "site_address" | "start_date" | "end_date">;
-function validateProject(p: ProjectInput) {
+export function validateProject(p: ProjectInput) {
   if (!p.name.trim()) throw new ApiError(422, "Project name is required");
   if (p.start_date && p.end_date && p.end_date < p.start_date) throw new ApiError(422, "End date must be after start date");
 }
