@@ -139,12 +139,13 @@ Seed files never contain passwords. They are safe to run more than once.
 
 ```bash
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/platform_foundation.sql
+psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/contracts_and_evidence.sql
 ```
 
-It ends with `platform_foundation: all checks passed`. Any other ending is a
-failure. The script runs in a transaction that is rolled back, so it leaves no
-data behind. It can also be pasted into the SQL editor, where "no error" means
-it passed.
+Each ends with `<name>: all checks passed`. Any other ending is a failure. The
+scripts run in a transaction that is rolled back, so they leave no data
+behind. They can also be pasted into the SQL editor, where "no error" means
+they passed.
 
 ### Run Supabase locally (optional, needs Docker)
 
@@ -211,7 +212,7 @@ Agreed branch names by workstream:
 | Workstream | Branches |
 |---|---|
 | Platform | `chore/platform-foundation`, `feature/auth-platform`, `feature/project-management` |
-| Data | `feature/contract-management`, `feature/contract-review`, `feature/evidence-management` |
+| Data | `feature/contracts-and-evidence` |
 | AI | chosen by Arya, under `feature/` |
 | Claim experience | chosen by Rehan, under `feature/` |
 

@@ -158,7 +158,7 @@ Updated as each piece lands.
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Done. The web app uses them in live mode. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
-| Contracts, contract items, evidence, storage | Not started. Mock only. |
+| Contracts, contract items, evidence, storage | Database tables done. Storage buckets, API endpoints and web wiring not started: the screens still use mock data. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |
 

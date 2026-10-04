@@ -7,7 +7,7 @@ Database migrations, seed data and database checks for the shared Supabase proje
 | `config.toml` | Supabase CLI settings |
 | `migrations/` | SQL files named `<YYYYMMDDHHMMSS>_<short_name>.sql`. They run in filename order. |
 | `seed/` | Fictional demo data. Safe to run more than once. No passwords. |
-| `tests/` | SQL checks for sign-up, privileges and organisation isolation |
+| `tests/` | SQL checks for sign-up, privileges and organisation isolation, one file per migration |
 
 How to apply migrations, load demo data and run the checks:
 [docs/development-guide.md](../docs/development-guide.md#6-database).
