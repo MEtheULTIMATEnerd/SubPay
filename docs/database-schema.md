@@ -37,6 +37,7 @@ Database: Supabase PostgreSQL, with pgvector for embeddings. Migrations live in
 | `organisations` | Subcontractor business. The tenant boundary. | Platform | Live |
 | `profiles` | Application profile for an auth user, with organisation and role | Platform | Live |
 | `projects` | Construction project workspace | Platform | Live |
+| `organisation_invitations` | An owner's invitation for one email address to join the organisation | Platform | Live |
 | `contracts` | Uploaded contract and processing metadata | Kinori | Live |
 | `contract_items` | Structured contractual / claim line item | Kinori | Live |
 | `evidence` | Photo, document, docket, message or other supporting record | Kinori | Live |
@@ -58,6 +59,7 @@ Migrations so far:
 | `20261004090000_platform_foundation.sql` | `organisations`, `profiles`, `projects`, the helper functions in section 3, the sign-up trigger, privileges and RLS policies |
 | `20261004120000_contracts_and_evidence.sql` | `contracts`, `contract_items`, `evidence`, `can_access_contract()`, the review-tracking and evidence-code triggers, privileges and RLS policies |
 | `20261004130000_storage_buckets.sql` | The private `contracts` and `evidence` storage buckets, `storage_object_project_id()`, and the storage policies |
+| `20261005090000_organisation_invitations.sql` | `organisation_invitations`, `invitation_preview()`, and a new version of the sign-up trigger that lets an invited person join an existing organisation |
 
 pgvector is not enabled yet. The first migration that needs it (Arya's
 embedding tables) should start with
@@ -122,6 +124,7 @@ client cannot choose them. Signed-out callers (`anon`) get nothing.
 ### Checking it works
 
 `supabase/tests/platform_foundation.sql`,
+`supabase/tests/organisation_invitations.sql`,
 `supabase/tests/contracts_and_evidence.sql` and
 `supabase/tests/storage_buckets.sql` sign up test users in two
 organisations and assert the rules above, inside a transaction that is rolled
@@ -166,8 +169,41 @@ Access: a user can read profiles in their own organisation and update their own
 organisation and the profile in one transaction. The web app passes two values
 as sign-up metadata: `full_name` and `organisation_name`. The person who signs
 up becomes the `owner` of a new organisation. If the metadata is missing, the
-name falls back to the part of the email before `@`. Sign-up metadata comes
-from the client, so it can never place a user in an existing organisation.
+name falls back to the part of the email before `@`.
+
+Sign-up metadata comes from the client, so only one thing in it can place a
+user in an existing organisation: a valid `invite_code` (see
+`organisation_invitations` below). With one, the new user joins the inviting
+organisation as a `member` and no organisation is created. A code that is
+wrong, used, expired, or issued for a different email address stops the
+sign-up altogether, so an invited person is never quietly given a new
+organisation instead.
+
+### `organisation_invitations`
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | uuid | PK |
+| `organisation_id` | uuid | FK to `organisations`. Defaults to the caller's organisation. |
+| `email` | text | The address the invited person must sign up with. Lower case. |
+| `role` | text | Always `member` |
+| `token_hash` | text | SHA-256 of the invite code, as hex. The code itself is never stored. Not readable by any client. |
+| `invited_by` | uuid | FK to `profiles`. Defaults to the caller. |
+| `expires_at` | timestamptz | Seven days after creation |
+| `accepted_at`, `accepted_by` | timestamptz, uuid | Set by the sign-up trigger when the link is used. Null while open. |
+| `created_at`, `updated_at` | timestamptz | |
+
+One open invitation per address in an organisation (partial unique index).
+
+Access: only an `owner` can read, create or revoke invitations, and only in
+their own organisation. A client supplies just `email` and `token_hash`;
+everything else is set by the database. Nothing can be updated by a client. An
+open invitation can be deleted (revoked); an accepted one is kept.
+
+`invitation_preview(code)` is a `security definer` function that signed-out
+callers may run. It returns the organisation name, the invited address and the
+expiry for a code that is still open, and no rows otherwise. It is the only
+thing in the database a signed-out caller can use.
 
 ### `projects`
 

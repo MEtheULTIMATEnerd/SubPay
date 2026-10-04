@@ -122,6 +122,11 @@ that screen is wired to the API.
 | GET | `/api/v1/health` | Liveness check, no auth | Live |
 | GET | `/api/v1/me` | Signed-in profile and organisation | Live |
 | PATCH | `/api/v1/me` | Update own `full_name` | Live |
+| GET | `/api/v1/organisation/members` | List the members of the caller's organisation | Live |
+| GET | `/api/v1/organisation/invitations` | List the organisation's invitations. Owners only. | Live |
+| POST | `/api/v1/organisation/invitations` | Invite a person by email. Owners only. Returns `201` with a one-time `invite_code`. | Live |
+| DELETE | `/api/v1/organisation/invitations/{invitation_id}` | Revoke an invitation that has not been accepted. Owners only. Returns `204`. | Live |
+| GET | `/api/v1/invitations/{invite_code}` | Look up an invite link. **No sign-in needed.** | Live |
 | GET | `/api/v1/projects` | List the organisation's projects, newest first. Optional `?status=active\|archived`, `limit`, `offset` | Live |
 | POST | `/api/v1/projects` | Create a project. Returns `201`. | Live |
 | GET | `/api/v1/projects/{project_id}` | Get one project | Live |
@@ -129,7 +134,7 @@ that screen is wired to the API.
 | POST | `/api/v1/projects/{project_id}/archive` | Archive. Safe to repeat. | Live |
 | POST | `/api/v1/projects/{project_id}/restore` | Restore to active. Safe to repeat. | Live |
 
-Sign up, sign in and sign out go straight from the browser to Supabase Auth, not through this API.
+Sign up, sign in and sign out go straight from the browser to Supabase Auth, not through this API. Invitations are described in section 3.
 
 ### Contracts and evidence (F03 to F07) — owner: Kinori
 
@@ -213,6 +218,52 @@ Exact AI routes may change after team discussion. The input and output shapes in
 ```
 
 `id` is the Supabase Auth user id. `role` is `owner` or `member`.
+
+### Members and invitations
+
+`GET /api/v1/organisation/members` returns
+`{ "items": [{ "id", "email", "full_name", "role", "created_at" }] }` for the
+caller's organisation, oldest member first. Any member may call it.
+
+An owner brings a second person in with an invitation:
+
+1. `POST /api/v1/organisation/invitations` with `{ "email": "riley@example.com" }`.
+2. The response carries `invite_code`. The web app turns it into a link, `/signup?invite=<invite_code>`, and the owner sends that link to the person. SubPay does not send email.
+3. The person opens the link and signs up **with the invited email address**. They join the owner's organisation as a `member` instead of getting an organisation of their own.
+
+```json
+{
+  "id": "1b7d1f0e-0000-4000-8000-000000000001",
+  "email": "riley@example.com",
+  "role": "member",
+  "invited_by": "7f1f5c58-2a4e-4b43-8a34-3f8a1f0c9b10",
+  "expires_at": "2026-10-11T05:00:00Z",
+  "accepted_at": null,
+  "created_at": "2026-10-04T05:00:00Z",
+  "status": "pending",
+  "invite_code": "Zk3vT9w2Qm8Lr5Xy7Bn1Hc4Jd6Fg0PsAaUuEeIiOo_-"
+}
+```
+
+- `invite_code` is returned **once**, by the `POST`. Only its hash is stored, so it cannot be looked up again. To replace a lost link, revoke the invitation and create a new one.
+- `status` is `pending`, `accepted` or `expired`. An invitation expires after seven days and works once.
+- The email is lower-cased. Anything else in the body is ignored: the role is always `member`, and the organisation, expiry and inviter come from the server.
+- `409 conflict` when the address already belongs to a member of the organisation, or already has an open invitation. `403 forbidden` when the caller is not an owner.
+- `DELETE` removes an open invitation and returns `204`. An accepted invitation is kept as a record and answers `404`, as does one in another organisation.
+
+`GET /api/v1/invitations/{invite_code}` is the only endpoint besides `/health`
+that needs no token. The sign-up page uses it to show what the link is for:
+
+```json
+{ "organisation_name": "Kearney Formwork Pty Ltd", "email": "riley@example.com", "expires_at": "2026-10-11T05:00:00Z" }
+```
+
+A code that is wrong, used, revoked or expired is a `404`, with no way to tell
+which. Sign-up itself still goes from the browser to Supabase Auth, with the
+code as sign-up metadata (`invite_code`); the database checks it again there.
+
+Not in the MVP: inviting a person who already has a SubPay account, removing a
+member, and changing a member's role.
 
 ### `GET /api/v1/me`
 

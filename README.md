@@ -71,6 +71,7 @@ apps/web/
 |---|---|---|
 | `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
 | `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
+| member and invitation functions in `lib/api.ts` | `/api/v1/organisation/members`, `/api/v1/organisation/invitations` and `/api/v1/invitations/{code}`. **Done** in live mode: see `lib/members.ts`. | Platform |
 | project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
 | contract and contract item functions in `lib/api.ts` | `/api/v1/.../contracts` and `/api/v1/contract-items`. **Done** in live mode: see `lib/contracts.ts`. | Kinori |
 | evidence functions in `lib/api.ts` (upload, edit, archive) | `/api/v1/.../evidence`. **Done** in live mode: see `lib/evidence.ts`. | Kinori |
@@ -78,7 +79,7 @@ apps/web/
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
 | `thumbnail` previews / file metadata | Supabase Storage with signed URLs. **Done** in live mode: see `previewOf` in `lib/evidence.ts`. | Kinori |
 
-Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/projects.ts`, `lib/contracts.ts`, `lib/evidence.ts`), so the swap is made one feature at a time.
+Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/members.ts`, `lib/projects.ts`, `lib/contracts.ts`, `lib/evidence.ts`), so the swap is made one feature at a time.
 
 ## Prototype limits (deliberate)
 

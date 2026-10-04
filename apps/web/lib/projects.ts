@@ -58,7 +58,7 @@ export async function refreshProjects(): Promise<void> {
   });
 }
 
-/** Drop the signed-in organisation's projects, and the contracts and evidence under them, from the local copy (used at sign-out). */
+/** Drop the signed-in organisation's projects, the contracts and evidence under them, and its other members from the local copy (used at sign-out). */
 export function clearCachedProjects(d: Db) {
   const organisationId = currentOrganisationId(d);
   if (!organisationId) return;
@@ -68,6 +68,8 @@ export function clearCachedProjects(d: Db) {
   d.contracts = d.contracts.filter((c) => !projectIds.has(c.project_id));
   d.evidence = d.evidence.filter((e) => !projectIds.has(e.project_id));
   d.projects = d.projects.filter((p) => !projectIds.has(p.id));
+  // Team-mates' names and addresses go too. The signed-in user's own row is kept until the session is cleared.
+  d.profiles = d.profiles.filter((p) => p.organisation_id !== organisationId || p.id === d.session?.profile_id);
 }
 
 /** Returns the new project's id. */

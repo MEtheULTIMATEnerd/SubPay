@@ -40,9 +40,13 @@ const PROJECT = {
   status: "active" as const, start_date: null, end_date: null, created_by: USER_ID, created_at: at, updated_at: at,
 };
 
-/** The API answers normally: /me returns the profile, /projects returns the organisation's projects. */
+const TEAM_MATE = { id: "a0000000-0000-4000-8000-000000000002", email: "morgan@subpay.test", full_name: "Morgan Member", role: "member" as const, created_at: at };
+const members = (me = ME) => [{ id: me.profile.id, email: me.profile.email, full_name: me.profile.full_name, role: me.profile.role, created_at: at }, TEAM_MATE];
+
+/** The API answers normally: /me returns the profile, /projects the organisation's projects, /organisation/members its people. */
 function apiAnswers(me = ME, projects = [PROJECT]) {
-  mocks.apiFetch.mockImplementation(async (path: string) => (path === "/projects" ? { items: projects } : me));
+  mocks.apiFetch.mockImplementation(async (path: string) =>
+    path === "/projects" ? { items: projects } : path === "/organisation/members" ? { items: members(me) } : me);
 }
 const callsTo = (path: string) => mocks.apiFetch.mock.calls.filter(([p]) => p === path).length;
 
@@ -147,6 +151,48 @@ test("sign-up sends the name and business as metadata for the database trigger",
   const args = mocks.signUp.mock.calls[0][0];
   expect(args.email).toBe("alex@subpay.test");
   expect(args.options.data).toEqual({ full_name: "Alex Owner", organisation_name: "Org A Formwork" });
+  expect(me()?.id).toBe(USER_ID);
+});
+
+test("sign-up through an invite link sends the code instead of a business name", async () => {
+  const { auth, me } = await load();
+  mocks.signUp.mockResolvedValue({ data: { user: { id: USER_ID, identities: [{}] }, session }, error: null });
+
+  await auth.signUp({ full_name: "Morgan Member", email: "morgan@subpay.test", password: "long-enough", organisation: "", invite_code: "the-invite-code" });
+
+  expect(mocks.signUp.mock.calls[0][0].options.data).toEqual({ full_name: "Morgan Member", invite_code: "the-invite-code" });
+  expect(me()?.id).toBe(USER_ID);
+});
+
+test("an invite code the database refuses is explained", async () => {
+  const { auth, me } = await load();
+  mocks.signUp.mockResolvedValue({ data: { user: null, session: null }, error: { status: 500, code: "unexpected_failure", message: "Database error saving new user" } });
+
+  const input = { full_name: "Morgan", email: "morgan@subpay.test", password: "long-enough", organisation: "" };
+  await expect(auth.signUp({ ...input, invite_code: "used-code" })).rejects.toMatchObject({ status: 410, message: expect.stringContaining("no longer valid") });
+  expect(me()).toBeNull();
+  // Without an invite code the same failure is not blamed on an invitation.
+  await expect(auth.signUp({ ...input, organisation: "Org" })).rejects.not.toThrow("no longer valid");
+});
+
+test("sign-in loads the team so their names can be shown, and sign-out removes them again", async () => {
+  const { auth, store } = await load();
+  await auth.signIn("alex@subpay.test", "pw");
+  const mates = () => store.getDb().profiles.filter((p) => p.organisation_id === ORG_ID).map((p) => p.full_name);
+  expect(mates()).toEqual(["Alex Owner", "Morgan Member"]);
+
+  await auth.signOut();
+  expect(mates()).not.toContain("Morgan Member");
+  expect(JSON.stringify(store.getDb())).not.toContain("morgan@subpay.test");
+});
+
+test("a failure to load the team does not stop the sign-in", async () => {
+  const { auth, me } = await load();
+  mocks.apiFetch.mockImplementation(async (path: string) => {
+    if (path === "/organisation/members") throw new ApiError(503, "Service unavailable");
+    return path === "/projects" ? { items: [PROJECT] } : ME;
+  });
+  await auth.signIn("alex@subpay.test", "pw");
   expect(me()?.id).toBe(USER_ID);
 });
 

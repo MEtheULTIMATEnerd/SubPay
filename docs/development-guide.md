@@ -59,7 +59,7 @@ the Supabase project (section 6). Restart `npm run dev` after changing
 In the Supabase dashboard, under Authentication:
 
 - URL Configuration: set the Site URL to `http://localhost:3000` for local development.
-- Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing.
+- Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing. Keep it on for any project real people use: an invite link is tied to an email address, and confirmation is what proves the person signing up owns that address.
 
 Sign-in, the profile, projects, contracts, contract item review and evidence
 are live. Evidence matching, claims, the audit trail and notifications still
@@ -163,6 +163,7 @@ it has no suggested contract links yet: open a record and choose
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/platform_foundation.sql
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/contracts_and_evidence.sql
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/storage_buckets.sql
+psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/organisation_invitations.sql
 ```
 
 Each ends with `<name>: all checks passed`. Any other ending is a failure. The
@@ -217,8 +218,9 @@ ruff format --check .
 
 New screens add their own Playwright tests under `apps/web/e2e/`, in files
 named `*.e2e.ts`. Today: `navigation.e2e.ts` (sign-in, projects, tabs),
-`contracts.e2e.ts` (upload, extraction, item review) and `evidence.e2e.ts`
-(upload, search and filters, edit, archive and restore, site capture).
+`contracts.e2e.ts` (upload, extraction, item review), `evidence.e2e.ts`
+(upload, search and filters, edit, archive and restore, site capture) and
+`members.e2e.ts` (invite, join through the link, revoke).
 
 ## 8. Git workflow
 

@@ -87,6 +87,7 @@ Supabase directly.
 - After sign-in the app loads the profile and organisation from `GET /api/v1/me` (`lib/http.ts` adds the bearer token). If the API cannot be reached, the user is not let into the app.
 - `components/shell.tsx` protects routes: until the saved session has been checked nobody counts as signed in, and signed-out visitors are sent to `/login`. This is a convenience for the user. The real protection is that the API and the database refuse requests without a valid token.
 - A `401` from the API signs the user out.
+- The organisation's members are loaded at sign-in (`lib/members.ts`) so screens can show who uploaded or reviewed something. An owner invites a person from the profile page; the invite link opens the sign-up page, which checks the link through the API's one public endpoint before showing the form.
 
 Contracts follow it too, in `apps/web/lib/contracts.ts`. A project's contracts
 and items are loaded when the project is opened (`lib/project-data.ts`), and
@@ -177,6 +178,7 @@ Updated as each piece lands.
 | Database migrations: organisations, profiles, projects, RLS | Done. Not yet applied to a shared Supabase project. |
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Done. The web app uses them in live mode. |
+| Organisation members and invitations | Done. An owner creates a one-time invite link on the profile page; signing up through it joins the organisation as a member. Members are loaded at sign-in so screens can show who did what. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
 | Contracts and contract items | Done. Upload, list, download link, extraction (mock provider), retry, and human review (edit, confirm, reject, reopen). The contract and item review screens use the API in live mode. |
 | Evidence | Done. Upload (file or written note), library with search and filters, signed previews and downloads, edit, archive and restore, AI processing status and retry. The evidence library and site capture screens use the API in live mode. |
@@ -215,6 +217,6 @@ Entity shapes are in `apps/web/lib/types.ts` and match
 
 ## 9. Open questions
 
-- How a second person joins an existing organisation. The schema supports `member`, but there is no invite screen in the MVP. For now members are added through seed data. In live mode the profile page lists only the signed-in user, because there is no members endpoint yet.
+- Member management beyond joining: there is no way yet to remove a member, change a role, or invite a person who already has a SubPay account. SubPay also does not email invite links; the owner copies the link and sends it.
 - Which model provider the AI service uses, and what data controls apply. Owner: Arya.
 - Whether shared TypeScript types are generated from the API's OpenAPI schema into `packages/contracts`.

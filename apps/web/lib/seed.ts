@@ -161,6 +161,7 @@ export function seed(now = Date.now()): Db {
   return {
     version: SEED_VERSION,
     session: null,
+    invitations: [],
     settings: { ai_available: true },
     organisations: [
       { id: ORG, name: "Kearney Formwork Pty Ltd", created_at: t, updated_at: t },

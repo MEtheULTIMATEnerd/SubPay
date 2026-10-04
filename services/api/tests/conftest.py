@@ -25,6 +25,8 @@ from app.api.deps import (
     get_evidence_repository,
     get_extraction_provider,
     get_file_storage,
+    get_invitation_lookup,
+    get_organisation_repository,
     get_platform_repository,
     get_token_verifier,
 )
@@ -36,6 +38,8 @@ from tests.fakes import (
     FakeContractRepository,
     FakeDatabase,
     FakeEvidenceRepository,
+    FakeInvitationLookup,
+    FakeOrganisationRepository,
     FakePlatformRepository,
     FakeStorage,
 )
@@ -217,6 +221,12 @@ def app(
 
     application.dependency_overrides[get_evidence_repository] = evidence_for_caller
     application.dependency_overrides[get_evidence_processor] = lambda: processor
+
+    def organisation_for_caller(user: CurrentUser) -> FakeOrganisationRepository:
+        return FakeOrganisationRepository(db, user.id)
+
+    application.dependency_overrides[get_organisation_repository] = organisation_for_caller
+    application.dependency_overrides[get_invitation_lookup] = lambda: FakeInvitationLookup(db)
     return application
 
 

@@ -6,7 +6,7 @@ import { commit, getDb, resetDb } from "./store";
 import * as ai from "./ai";
 import { ApiError } from "./errors";
 import type {
-  Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType,
+  Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType, Invitation, InvitationPreview, InvitationStatus,
 } from "./types";
 
 export { ApiError };
@@ -166,10 +166,11 @@ export function signIn(email: string, password: string) {
   if (!p || !password) throw new ApiError(401, "Email or password is incorrect");
   commit((d) => { d.session = { profile_id: p.id }; });
 }
-export function signUp(input: { full_name: string; email: string; password: string; organisation: string }) {
+export function signUp(input: { full_name: string; email: string; password: string; organisation: string; invite_code?: string }) {
   if (input.password.length < 8) throw new ApiError(422, "Password must be at least 8 characters");
   if (getDb().profiles.some((p) => p.email.toLowerCase() === input.email.trim().toLowerCase()))
     throw new ApiError(409, "An account with this email already exists");
+  if (input.invite_code) return acceptInvitation(input as typeof input & { invite_code: string });
   commit((d) => {
     const org = { id: uid(), name: input.organisation.trim(), created_at: now(), updated_at: now() };
     const prof: Profile = { id: uid(), email: input.email.trim(), organisation_id: org.id, full_name: input.full_name.trim(), role: "owner", created_at: now(), updated_at: now() };
@@ -179,6 +180,74 @@ export function signUp(input: { full_name: string; email: string; password: stri
   });
 }
 export const signOut = () => commit((d) => { d.session = null; });
+
+// ---------- F01 organisation members and invitations (demo mode) ----------
+// With Supabase configured, lib/members.ts calls /api/v1/organisation instead.
+export const INVITATION_INVALID = "This invitation is no longer valid. Ask the organisation's owner for a new link.";
+const INVITE_DAYS = 7;
+const invitationStatus = (i: { accepted_at: string | null; expires_at: string }): InvitationStatus =>
+  i.accepted_at ? "accepted" : i.expires_at <= now() ? "expired" : "pending";
+const openInvitation = (d: Db, code: string) =>
+  (d.invitations ?? []).find((i) => i.code === code && invitationStatus(i) === "pending") ?? null;
+function owner(d: Db): Profile {
+  const p = me(d);
+  if (p.role !== "owner") throw new ApiError(403, "Only an owner can manage invitations");
+  return p;
+}
+
+export function listInvitations(): Invitation[] {
+  const d = getDb();
+  const p = owner(d);
+  return (d.invitations ?? [])
+    .filter((i) => i.organisation_id === p.organisation_id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((i) => ({ id: i.id, email: i.email, role: i.role, invited_by: i.invited_by, expires_at: i.expires_at, accepted_at: i.accepted_at, created_at: i.created_at, status: invitationStatus(i) }));
+}
+/** Returns the new invitation's id and its code. The code is what goes in the invite link. */
+export function createInvitation(rawEmail: string): { id: string; code: string } {
+  const email = rawEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 320) throw new ApiError(422, "Enter a valid email address");
+  const id = uid();
+  const code = `${uid()}${uid()}`.replaceAll("-", "");
+  commit((d) => {
+    const p = owner(d);
+    if (d.profiles.some((x) => x.organisation_id === p.organisation_id && x.email.toLowerCase() === email))
+      throw new ApiError(409, "This person is already a member of your organisation");
+    const invitations = (d.invitations ??= []);
+    if (invitations.some((i) => i.organisation_id === p.organisation_id && i.email === email && !i.accepted_at))
+      throw new ApiError(409, "This person has already been invited. Revoke that invitation to send a new one.");
+    invitations.push({
+      id, organisation_id: p.organisation_id, email, role: "member", invited_by: p.id, code,
+      expires_at: new Date(Date.now() + INVITE_DAYS * 86_400_000).toISOString(), accepted_at: null, created_at: now(),
+    });
+  });
+  return { id, code };
+}
+export function revokeInvitation(id: string) {
+  commit((d) => {
+    const p = owner(d);
+    const index = (d.invitations ?? []).findIndex((i) => i.id === id && i.organisation_id === p.organisation_id && !i.accepted_at);
+    if (index === -1) throw new ApiError(404, "Invitation not found");
+    d.invitations!.splice(index, 1);
+  });
+}
+export function previewInvitation(code: string): InvitationPreview | null {
+  const d = getDb();
+  const invitation = openInvitation(d, code);
+  if (!invitation) return null;
+  return { organisation_name: d.organisations.find((o) => o.id === invitation.organisation_id)!.name, email: invitation.email, expires_at: invitation.expires_at };
+}
+/** Sign up through an invite link: join the inviting organisation as a member. The link works once. */
+function acceptInvitation(input: { full_name: string; email: string; invite_code: string }) {
+  commit((d) => {
+    const invitation = openInvitation(d, input.invite_code);
+    if (!invitation || invitation.email !== input.email.trim().toLowerCase()) throw new ApiError(410, INVITATION_INVALID);
+    const prof: Profile = { id: uid(), email: invitation.email, organisation_id: invitation.organisation_id, full_name: input.full_name.trim(), role: invitation.role, created_at: now(), updated_at: now() };
+    d.profiles.push(prof);
+    invitation.accepted_at = now();
+    d.session = { profile_id: prof.id };
+  });
+}
 export function updateProfile(full_name: string) {
   commit((d) => { const p = me(d); p.full_name = full_name.trim(); p.updated_at = now(); });
 }

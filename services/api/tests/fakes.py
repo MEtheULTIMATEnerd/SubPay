@@ -8,16 +8,19 @@ It does NOT prove that Row Level Security works. That is checked against a
 real database by supabase/tests/platform_foundation.sql.
 """
 
-from datetime import date, datetime, timezone
+import hashlib
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
 from app.core import errors
 from app.core.errors import ApiError
 from app.repositories.evidence import EvidenceFilters
+from app.repositories.organisation import ALREADY_INVITED_MESSAGE
 from app.repositories.platform import NO_PROFILE_MESSAGE
 from app.schemas.contracts import Contract, ContractItem
 from app.schemas.evidence import Evidence
+from app.schemas.organisation import Invitation, InvitationPreview, Member
 from app.schemas.platform import Me, Organisation, Profile, Project, ProjectStatus
 
 
@@ -33,6 +36,7 @@ class FakeDatabase:
         self.contracts: dict[UUID, dict[str, Any]] = {}
         self.contract_items: dict[UUID, dict[str, Any]] = {}
         self.evidence: dict[UUID, dict[str, Any]] = {}
+        self.invitations: dict[UUID, dict[str, Any]] = {}
 
     def organisation_of(self, user_id: UUID) -> UUID | None:
         profile = self.profiles.get(user_id)
@@ -384,3 +388,86 @@ class FakeEvidenceRepository:
             raise errors.validation_error("Add a file or a written note", field="description")
         row.update(changes, updated_at=_now())
         return Evidence.model_validate(row)
+
+
+class FakeOrganisationRepository:
+    """Members and invitations for one caller, with the database's rules:
+    only an owner sees, creates or revokes invitations, and only in their own organisation."""
+
+    def __init__(self, db: FakeDatabase, user_id: UUID) -> None:
+        self._db = db
+        self._user_id = user_id
+
+    def _is_owner(self) -> bool:
+        return self.my_role() == "owner"
+
+    def my_role(self) -> str | None:
+        profile = self._db.profiles.get(self._user_id)
+        return profile["role"] if profile else None
+
+    def list_members(self) -> list[Member]:
+        organisation_id = self._db.organisation_of(self._user_id)
+        rows = [p for p in self._db.profiles.values() if p["organisation_id"] == organisation_id]
+        rows.sort(key=lambda p: p["created_at"])
+        return [Member.model_validate(row) for row in rows] if organisation_id else []
+
+    def _mine(self) -> list[dict[str, Any]]:
+        if not self._is_owner():
+            return []
+        organisation_id = self._db.organisation_of(self._user_id)
+        return [i for i in self._db.invitations.values() if i["organisation_id"] == organisation_id]
+
+    def list_invitations(self) -> list[Invitation]:
+        rows = sorted(self._mine(), key=lambda i: i["created_at"], reverse=True)
+        return [Invitation.model_validate(row) for row in rows]
+
+    def create_invitation(self, email: str, token_hash: str) -> Invitation:
+        if not self._is_owner():
+            raise errors.forbidden()
+        if any(i["email"] == email and i["accepted_at"] is None for i in self._mine()):
+            # The unique index on (organisation_id, email) for open invitations.
+            raise errors.conflict(ALREADY_INVITED_MESSAGE)
+        row = {
+            "id": uuid4(),
+            "organisation_id": self._db.organisation_of(self._user_id),
+            "email": email,
+            "role": "member",
+            "token_hash": token_hash,
+            "invited_by": self._user_id,
+            "expires_at": _now() + timedelta(days=7),
+            "accepted_at": None,
+            "accepted_by": None,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        self._db.invitations[row["id"]] = row
+        return Invitation.model_validate(row)
+
+    def delete_open_invitation(self, invitation_id: UUID) -> bool:
+        for row in self._mine():
+            if row["id"] == invitation_id and row["accepted_at"] is None:
+                del self._db.invitations[invitation_id]
+                return True
+        return False
+
+
+class FakeInvitationLookup:
+    """What the database function invitation_preview() does."""
+
+    def __init__(self, db: FakeDatabase) -> None:
+        self._db = db
+
+    def preview(self, code: str) -> InvitationPreview | None:
+        token_hash = hashlib.sha256(code.encode()).hexdigest()
+        for row in self._db.invitations.values():
+            if (
+                row["token_hash"] == token_hash
+                and row["accepted_at"] is None
+                and row["expires_at"] > _now()
+            ):
+                return InvitationPreview(
+                    organisation_name=self._db.organisations[row["organisation_id"]]["name"],
+                    email=row["email"],
+                    expires_at=row["expires_at"],
+                )
+        return None

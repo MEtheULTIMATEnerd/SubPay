@@ -59,6 +59,7 @@ app/
       health.py      GET /api/v1/health
       me.py          GET, PATCH /api/v1/me
       projects.py    /api/v1/projects
+      organisation.py  Members, invitations and the public invite-link lookup
       contracts.py   Contract upload, list, get, extraction retry, items
       evidence.py    Evidence upload, library, get, edit, archive, reprocess
   schemas/           Request and response shapes (Pydantic)

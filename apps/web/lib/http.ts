@@ -12,6 +12,8 @@ interface RequestOptions {
   /** Sent as multipart/form-data, for file uploads. Use instead of `body`. */
   form?: FormData;
   query?: Record<string, string | number | undefined>;
+  /** false for the few endpoints that need no sign-in. No token is sent. */
+  auth?: boolean;
   /** For a `form` upload: called with how much has been sent, from 0 to 1. */
   onUploadProgress?: (fraction: number) => void;
 }
@@ -54,10 +56,13 @@ export function setUnauthorizedHandler(handler: (() => void) | null) {
   onUnauthorized = handler;
 }
 
-export async function apiFetch<T>(path: string, { method = "GET", body, form, query, onUploadProgress }: RequestOptions = {}): Promise<T> {
-  const { data } = await supabase().auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new ApiError(401, "Sign in to continue", "unauthenticated");
+export async function apiFetch<T>(path: string, { method = "GET", body, form, query, auth = true, onUploadProgress }: RequestOptions = {}): Promise<T> {
+  let token = "";
+  if (auth) {
+    const { data } = await supabase().auth.getSession();
+    token = data.session?.access_token ?? "";
+    if (!token) throw new ApiError(401, "Sign in to continue", "unauthenticated");
+  }
 
   const url = new URL(`${API_URL}/api/v1${path}`);
   for (const [key, value] of Object.entries(query ?? {})) {
@@ -79,7 +84,7 @@ export async function apiFetch<T>(path: string, { method = "GET", body, form, qu
     response = await fetch(url, {
       method,
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...(auth ? { Authorization: `Bearer ${token}` } : {}),
         // For a form the browser sets Content-Type itself, including the boundary.
         ...(body === undefined || form ? {} : { "Content-Type": "application/json" }),
       },
@@ -94,6 +99,6 @@ export async function apiFetch<T>(path: string, { method = "GET", body, form, qu
   }
 
   const error = toError(response.status, (await response.json().catch(() => null)) as ErrorPayload);
-  if (response.status === 401) onUnauthorized?.();
+  if (response.status === 401 && auth) onUnauthorized?.();
   throw error;
 }

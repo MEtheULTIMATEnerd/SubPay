@@ -173,3 +173,20 @@ test("without a progress callback an upload still uses fetch", async () => {
   await apiFetch("/projects/p1/contracts", { method: "POST", form: fileForm() });
   expect(fetchMock).toHaveBeenCalledOnce();
 });
+
+test("a public request needs no session and sends no token", async () => {
+  mocks.getSession.mockClear();
+  mocks.getSession.mockResolvedValue({ data: { session: null } });
+  const handler = vi.fn();
+  setUnauthorizedHandler(handler);
+
+  fetchMock.mockResolvedValue(json(200, { organisation_name: "Org A Formwork" }));
+  await expect(apiFetch("/invitations/some-invite-code", { auth: false })).resolves.toEqual({ organisation_name: "Org A Formwork" });
+  expect(lastCall().headers.Authorization).toBeUndefined();
+  expect(mocks.getSession).not.toHaveBeenCalled();
+
+  // a refusal on a public request is not a reason to sign anyone out
+  fetchMock.mockResolvedValue(json(401, { error: { code: "unauthenticated", message: "No" } }));
+  await expect(apiFetch("/invitations/some-invite-code", { auth: false })).rejects.toMatchObject({ status: 401 });
+  expect(handler).not.toHaveBeenCalled();
+});

@@ -77,9 +77,21 @@ class SupabaseRest:
             params["offset"] = str(offset)
         return self._request("GET", table, params=params)
 
-    def insert(self, table: str, row: dict[str, Any]) -> dict[str, Any]:
-        rows = self._request("POST", table, json=row, headers={"Prefer": "return=representation"})
+    def insert(self, table: str, row: dict[str, Any], *, columns: str = "*") -> dict[str, Any]:
+        """Insert one row and return it. `columns` limits what is read back, for
+        tables where the caller may not read every column."""
+        rows = self._request(
+            "POST",
+            table,
+            json=row,
+            params={"select": columns},
+            headers={"Prefer": "return=representation"},
+        )
         return rows[0]
+
+    def rpc(self, function: str, arguments: dict[str, Any]) -> list[dict[str, Any]]:
+        """Call a database function that returns rows."""
+        return self._request("POST", f"rpc/{function}", json=arguments)
 
     def insert_many(self, table: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Insert several rows in one request, so they are stored all together or not at all."""

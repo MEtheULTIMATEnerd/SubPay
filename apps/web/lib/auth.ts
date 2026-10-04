@@ -12,6 +12,7 @@ import * as mock from "./api";
 import { LIVE } from "./env";
 import { ApiError, isApiError } from "./errors";
 import { apiFetch, setUnauthorizedHandler } from "./http";
+import { refreshMembers } from "./members";
 import { resetProjectData } from "./project-data";
 import { clearCachedProjects, refreshProjects } from "./projects";
 import { commit, getDb } from "./store";
@@ -34,7 +35,10 @@ export interface SignUpInput {
   full_name: string;
   email: string;
   password: string;
+  /** The business name. Not used when joining through an invite link. */
   organisation: string;
+  /** From an invite link: join that organisation as a member instead of creating one. */
+  invite_code?: string;
 }
 
 // ---------- observable state ----------
@@ -88,7 +92,9 @@ function clearLocalSession() {
 async function loadProfile(userId: string) {
   try {
     mirror(await apiFetch<Me>("/me"));
-    await refreshProjects(); // pages can render straight away once the user is let in
+    // Pages can render straight away once the user is let in. Team-mates' names are
+    // only for display, so a failure to load them does not stop the sign-in.
+    await Promise.all([refreshProjects(), refreshMembers().catch(() => undefined)]);
     syncedUserId = userId;
     setState({ ready: true, error: null });
   } catch (err) {
@@ -187,11 +193,18 @@ export async function signUp(input: SignUpInput): Promise<{ needsEmailConfirmati
     email: input.email.trim(),
     password: input.password,
     options: {
-      // Read by the database sign-up trigger to create the profile and organisation.
-      data: { full_name: input.full_name.trim(), organisation_name: input.organisation.trim() },
+      // Read by the database sign-up trigger: it creates the profile, and either a new
+      // organisation or, with a valid invite code, membership of the inviting one.
+      data: input.invite_code
+        ? { full_name: input.full_name.trim(), invite_code: input.invite_code }
+        : { full_name: input.full_name.trim(), organisation_name: input.organisation.trim() },
       emailRedirectTo: typeof window === "undefined" ? undefined : `${window.location.origin}/dashboard`,
     },
   });
+  // The database refuses a sign-up whose invite code is wrong, used, expired or for another address.
+  if (error && input.invite_code && (error.code === "unexpected_failure" || /database error/i.test(error.message))) {
+    throw new ApiError(410, mock.INVITATION_INVALID, "invitation_invalid");
+  }
   if (error) throw fromSupabase(error);
   // With email confirmation on, Supabase hides "already registered" behind an empty identity list.
   if (data.user?.identities && data.user.identities.length === 0) {
