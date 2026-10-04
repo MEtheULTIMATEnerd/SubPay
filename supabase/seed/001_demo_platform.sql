@@ -11,7 +11,10 @@
 --   2. Run this file (SQL editor, or `supabase db reset` locally).
 --
 -- An account that does not exist yet is skipped with a notice.
--- Project ids are fixed so later seed files can attach contracts and evidence.
+-- Project ids are fixed so later seed files can refer to them.
+-- Contracts and evidence need stored files, so the demo project that has them
+-- ("Riverside Commercial Fitout") is created through the API instead:
+-- services/api/scripts/seed_demo.py.
 -- =============================================================================
 
 do $$

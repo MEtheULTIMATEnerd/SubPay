@@ -118,14 +118,13 @@ export function previewFailed(projectId: string) {
  * With autoMatch off, no contract-item suggestions are generated (the person is linking it themselves).
  */
 export async function uploadEvidence(projectId: string, input: EvidenceInput, { autoMatch = true } = {}): Promise<string> {
-  if (!LIVE) return mock.uploadEvidence(projectId, input, { autoMatch });
-
-  // The API checks the file's real contents. These are the same rules, for an instant answer.
+  // The same rules in both modes. In live mode the API also checks the file's real contents.
   const { file } = input;
   if (!file && !input.description.trim()) throw new ApiError(422, "Add a file or a written note", "validation_error");
   if (file && file.size > mock.MAX_EVIDENCE_BYTES) throw new ApiError(413, "Evidence files must be 50 MB or smaller", "payload_too_large");
   if (file && !MIME_TYPES.includes(file.type) && !EXTENSIONS.test(file.name)) throw new ApiError(415, EVIDENCE_TYPES_MESSAGE, "unsupported_media_type");
   checkText(input.title, input.description, { titleRequired: false });
+  if (!LIVE) return mock.uploadEvidence(projectId, input, { autoMatch });
 
   const author = getDb().profiles.find((p) => p.id === getDb().session?.profile_id)?.full_name;
   const form = new FormData();

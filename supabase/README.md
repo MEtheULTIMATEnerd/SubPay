@@ -6,7 +6,7 @@ Database migrations, seed data and database checks for the shared Supabase proje
 |---|---|
 | `config.toml` | Supabase CLI settings |
 | `migrations/` | SQL files named `<YYYYMMDDHHMMSS>_<short_name>.sql`. They run in filename order. |
-| `seed/` | Fictional demo data. Safe to run more than once. No passwords. |
+| `seed/` | Fictional demo data for the platform tables. Safe to run more than once. No passwords. Contracts and evidence need stored files, so their demo data is created through the API by `services/api/scripts/seed_demo.py`. |
 | `tests/` | SQL checks for sign-up, privileges and organisation isolation, one file per migration |
 
 How to apply migrations, load demo data and run the checks:

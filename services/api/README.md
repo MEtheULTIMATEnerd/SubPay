@@ -30,6 +30,19 @@ ruff format --check .
 
 Tests never call Supabase. Tokens are signed in the tests with throwaway keys.
 
+## Demo data
+
+With the API running and a SubPay account created:
+
+```bash
+python -m scripts.seed_demo --email <account email>
+```
+
+This signs in (it asks for the password and never stores it) and builds the
+"Riverside Commercial Fitout" project through the API: a contract, a reviewed
+claim schedule and nine evidence records. Running it again changes nothing.
+`--api-url` points it at an API that is not on `http://localhost:8000`.
+
 ## Layout
 
 ```
@@ -60,6 +73,8 @@ app/
   ai/
     extraction.py    The AI boundary: ExtractionProvider, mock and HTTP providers
     evidence.py      The AI boundary for evidence: EvidenceProcessor, mock and HTTP
+scripts/
+  seed_demo.py       Builds the Riverside Commercial Fitout demo project through the API
 tests/
   fakes.py           In-memory repositories and storage used by the endpoint tests
   files.py           Small valid sample files for upload tests

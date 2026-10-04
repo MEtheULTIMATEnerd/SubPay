@@ -54,7 +54,7 @@ export default function CapturePage() {
     setSaving(true);
     try {
       const id = await uploadEvidence(projectId, {
-        file, title: "Site photo", description: note, evidence_type: "photo", captured_at: takenAt.toISOString(),
+        file, title: file ? "Site photo" : "Site note", description: note, evidence_type: file ? "photo" : "message", captured_at: takenAt.toISOString(),
         location: location || null, thumbnail: thumb, source: "mobile_upload",
       }, { autoMatch: !choice });
       if (choice) linkEvidence(id, choice);
@@ -67,7 +67,7 @@ export default function CapturePage() {
   }
 
   function reset() {
-    setFile(null); setThumb(null); setNote(""); setChoice(null); setShowAll(false); setDone(false); setError("");
+    setFile(null); setThumb(null); setTakenAt(new Date()); setNote(""); setChoice(null); setShowAll(false); setDone(false); setError("");
   }
 
   return (

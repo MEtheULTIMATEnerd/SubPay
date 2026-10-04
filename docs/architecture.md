@@ -178,6 +178,7 @@ Updated as each piece lands.
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
 | Contracts and contract items | Done. Upload, list, download link, extraction (mock provider), retry, and human review (edit, confirm, reject, reopen). The contract and item review screens use the API in live mode. |
 | Evidence | Done. Upload (file or written note), library with search and filters, signed previews and downloads, edit, archive and restore, AI processing status and retry. The evidence library and site capture screens use the API in live mode. |
+| Demo data | `supabase/seed/001_demo_platform.sql` for projects. `services/api/scripts/seed_demo.py` builds a full demo project (contract, reviewed items, evidence) through the API. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |
 

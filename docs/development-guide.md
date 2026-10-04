@@ -136,7 +136,26 @@ No CLI? Open the Supabase dashboard, go to the SQL editor, and run each file in
 1. In the Supabase dashboard, go to Authentication > Users > Add user and create `ollie@kearneyformwork.test` with a password of your choice. Optionally also create `sam@othersubbie.test`, a second organisation used to show isolation.
 2. Run `supabase/seed/001_demo_platform.sql` (with `--include-seed` above, or in the SQL editor).
 
-Seed files never contain passwords. They are safe to run more than once.
+3. For a project with a contract, a reviewed claim schedule and evidence, start the API (section 4) and run:
+
+   ```bash
+   cd services/api
+   python -m scripts.seed_demo --email ollie@kearneyformwork.test
+   ```
+
+   It asks for that account's password, signs in, and creates **Riverside
+   Commercial Fitout** through the API, the same way the web app would: it
+   uploads a contract, lets extraction run, confirms three of the four items
+   (one with a correction) and leaves one as an AI draft, then adds nine
+   evidence records (photos, a docket, a timesheet and two written notes; one
+   is archived). The files are generated placeholders, so the photos are
+   coloured stripes rather than real site photos. It works for any account,
+   and each organisation gets its own copy.
+
+Seed files and the seed script never contain passwords, and are safe to run
+more than once. Evidence created by the script arrives already processed, so
+it has no suggested contract links yet: open a record and choose
+**Re-run AI matching** (matching is still mock data).
 
 ### Check the security rules
 
@@ -197,7 +216,9 @@ ruff format --check .
 ```
 
 New screens add their own Playwright tests under `apps/web/e2e/`, in files
-named `*.e2e.ts`.
+named `*.e2e.ts`. Today: `navigation.e2e.ts` (sign-in, projects, tabs),
+`contracts.e2e.ts` (upload, extraction, item review) and `evidence.e2e.ts`
+(upload, search and filters, edit, archive and restore, site capture).
 
 ## 8. Git workflow
 

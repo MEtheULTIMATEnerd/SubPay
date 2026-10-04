@@ -39,8 +39,13 @@ test("demo mode uploads, edits, matches and archives locally without calling the
   expect(apiFetch).not.toHaveBeenCalled();
 });
 
-test("demo mode surfaces upload validation as a rejected promise", async () => {
-  await expect(uploadEvidence("prj-hume", {
-    file: null, title: "", description: "  ", evidence_type: "message", captured_at: "2026-09-14T01:30:00.000Z", location: null, thumbnail: null,
-  })).rejects.toThrow("Add a file or a written note");
+test("demo mode applies the same upload rules and surfaces them as a rejected promise", async () => {
+  const input = { title: "", description: "  ", evidence_type: "message" as const, captured_at: "2026-09-14T01:30:00.000Z", location: null, thumbnail: null };
+  const before = getDb().evidence.length;
+
+  await expect(uploadEvidence("prj-hume", { ...input, file: null })).rejects.toThrow("Add a file or a written note");
+  const exe = new File(["MZ"], "setup.exe", { type: "application/x-msdownload" });
+  await expect(uploadEvidence("prj-hume", { ...input, file: exe })).rejects.toThrow("That file type is not supported");
+
+  expect(getDb().evidence).toHaveLength(before);
 });
