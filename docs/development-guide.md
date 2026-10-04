@@ -13,7 +13,7 @@ They are updated in the same merge request that adds the piece.
 | Git | any recent | Everything |
 | Node.js | 22.12 or newer (24 also works) | `apps/web` |
 | npm | ships with Node | `apps/web` |
-| Python | 3.10 or newer | `services/api`, `services/ai` **(coming)** |
+| Python | 3.10 or newer | `services/api`, `services/ai` |
 | Supabase project | shared team project | Database, Auth, Storage |
 | Supabase CLI | latest, run with `npx supabase` | Applying migrations |
 | `psql` | any recent | Running the database checks (optional) |
@@ -42,10 +42,23 @@ Today the web app runs entirely in the browser on mock data. Choose
 **Continue as demo user** on the login page. Data is saved in `localStorage`.
 To start over, go to **Profile & settings → Reset demo data**.
 
-## 4. Run the API **(coming)**
+## 4. Run the API
 
-Lands with the FastAPI foundation. It will run from `services/api` and serve
-`http://localhost:8000/api/v1`, with OpenAPI docs at `/api/v1/docs`.
+```bash
+cd services/api
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+cp .env.example .env            # then fill in the Supabase values
+uvicorn app.main:app --reload --port 8000
+```
+
+- Health check: http://localhost:8000/api/v1/health
+- Interactive docs: http://localhost:8000/api/v1/docs
+
+The server starts without Supabase values, and `/health` works, but every
+authenticated request is rejected until `SUPABASE_URL` is set. Today the API
+has the foundation only. Feature endpoints arrive with each workstream.
 
 ## 5. Environment variables
 
@@ -60,14 +73,14 @@ placeholder values, are committed. Never commit a real key.
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (anon / publishable) key. Safe for the browser. |
 | `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI service, e.g. `http://localhost:8000` |
 
-**API (`services/api/.env`) (coming)**
+**API (`services/api/.env`)**, template in `services/api/.env.example`
 
 | Variable | Purpose |
 |---|---|
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Public key, used with the caller's JWT so RLS applies |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-only key that bypasses RLS. Never in the web app. |
-| `SUPABASE_JWT_SECRET` | Only for projects that sign JWTs with a shared secret |
+| `SUPABASE_JWT_SECRET` | Only for projects that still sign JWTs with the legacy shared secret. Leave empty otherwise. |
 | `CORS_ORIGINS` | Allowed web origins, e.g. `http://localhost:3000` |
 | `AI_SERVICE_URL` | Base URL of the AI service |
 
@@ -141,10 +154,12 @@ On a fresh clone, run `npm run build` (or `npm run dev` once) before
 `npm run typecheck`. Next.js generates route types such as `LayoutProps` at
 that point, and typecheck fails without them.
 
-**API (`services/api`) (coming)**
+**API (`services/api`, with the virtual environment active)**
 
 ```bash
 pytest
+ruff check .
+ruff format --check .
 ```
 
 End-to-end tests with Playwright are added with the features that need them.

@@ -126,7 +126,7 @@ Updated as each piece lands.
 | Web UI for F01 to F20 | Prototype. Runs on a mock service layer (`apps/web/lib/api.ts`) with `localStorage` data and a mock AI (`apps/web/lib/ai.ts`). |
 | Repository structure and shared docs | Done |
 | Database migrations: organisations, profiles, projects, RLS | Done. Not yet applied to a shared Supabase project. |
-| FastAPI foundation and `/api/v1/health` | Not started |
+| FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Not started |
 | Supabase Auth in the web app | Not started. Login is simulated. |
 | Contracts, contract items, evidence, storage | Not started. Mock only. |

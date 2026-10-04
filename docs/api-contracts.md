@@ -52,7 +52,7 @@ Authorization: Bearer <Supabase access token>
 | File too large | `413` |
 | File type not supported | `415` |
 | Validation failed | `422` |
-| AI service unavailable | `503` |
+| AI service or another dependency unavailable | `503` |
 
 `PATCH` updates only the fields that are sent.
 
@@ -93,9 +93,14 @@ Validation errors add `details`:
 }
 ```
 
-Error codes: `unauthenticated`, `forbidden`, `not_found`, `conflict`,
-`payload_too_large`, `unsupported_media_type`, `validation_error`,
-`ai_unavailable`, `internal_error`. `message` is safe to show to a user.
+Error codes: `bad_request`, `unauthenticated`, `forbidden`, `not_found`,
+`method_not_allowed`, `conflict`, `payload_too_large`,
+`unsupported_media_type`, `validation_error`, `ai_unavailable`,
+`service_unavailable`, `internal_error`. `message` is safe to show to a user.
+
+A `401` means the token is missing, invalid or expired, and the client should
+send the user to sign in. A `503` with `service_unavailable` means the token
+could not be checked right now, and the client should retry.
 
 ### AI output
 
@@ -112,7 +117,7 @@ prototype implements it in `apps/web/lib/api.ts` only. **Live** means FastAPI se
 
 | Method | Path | Purpose | State |
 |---|---|---|---|
-| GET | `/api/v1/health` | Liveness check, no auth | Planned |
+| GET | `/api/v1/health` | Liveness check, no auth | Live |
 | GET | `/api/v1/me` | Signed-in profile and organisation | Mock |
 | PATCH | `/api/v1/me` | Update own `full_name` | Mock |
 | GET | `/api/v1/projects` | List the organisation's projects. Optional `?status=active\|archived` | Mock |
@@ -170,6 +175,12 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 Exact AI routes may change after team discussion. The input and output shapes in section 6 are what callers depend on.
 
 ## 3. Platform objects
+
+### `GET /api/v1/health`
+
+```json
+{ "status": "ok", "service": "subpay-api", "version": "0.1.0", "environment": "development" }
+```
 
 ### Organisation
 

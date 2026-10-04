@@ -1,0 +1,157 @@
+"""Shared fixtures.
+
+No test talks to Supabase. Tokens are signed here with throwaway keys, and the
+verifier is given those keys directly instead of fetching a JWKS.
+"""
+
+import time
+import uuid
+from collections.abc import Callable
+from typing import Any
+
+import jwt
+import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
+from fastapi import APIRouter, FastAPI
+from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field
+
+from app.api.deps import CurrentUser, get_token_verifier
+from app.core import errors
+from app.core.config import Settings
+from app.core.security import TokenVerifier
+from app.main import create_app
+
+SUPABASE_URL = "https://test-project.supabase.co"
+ISSUER = f"{SUPABASE_URL}/auth/v1"
+HS_SECRET = "test-only-shared-secret-with-at-least-32-bytes!"
+USER_ID = "a0000000-0000-4000-8000-000000000001"
+
+
+class StaticKeyClient:
+    """Stands in for PyJWKClient: always answers with one known public key."""
+
+    def __init__(self, public_key: Any) -> None:
+        self._public_key = public_key
+
+    def get_signing_key_from_jwt(self, token: str) -> Any:
+        class _SigningKey:
+            key = self._public_key
+
+        return _SigningKey()
+
+
+@pytest.fixture(scope="session")
+def ec_private_key() -> ec.EllipticCurvePrivateKey:
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+@pytest.fixture(scope="session")
+def other_ec_private_key() -> ec.EllipticCurvePrivateKey:
+    """A key the server does not trust."""
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+@pytest.fixture
+def settings() -> Settings:
+    return Settings(
+        _env_file=None,
+        environment="test",
+        supabase_url=SUPABASE_URL,
+        supabase_anon_key="test-anon-key",
+        supabase_jwt_secret=HS_SECRET,
+        cors_origins="http://localhost:3000, https://app.subpay.test",
+    )
+
+
+@pytest.fixture
+def verifier(ec_private_key: ec.EllipticCurvePrivateKey) -> TokenVerifier:
+    return TokenVerifier(
+        audience="authenticated",
+        issuer=ISSUER,
+        jwt_secret=HS_SECRET,
+        jwks_client=StaticKeyClient(ec_private_key.public_key()),
+    )
+
+
+def base_claims(**overrides: Any) -> dict[str, Any]:
+    now = int(time.time())
+    claims: dict[str, Any] = {
+        "iss": ISSUER,
+        "aud": "authenticated",
+        "sub": USER_ID,
+        "role": "authenticated",
+        "email": "owner.a@subpay.test",
+        "iat": now,
+        "exp": now + 3600,
+    }
+    claims.update(overrides)
+    return {k: v for k, v in claims.items() if v is not None}
+
+
+@pytest.fixture
+def make_token(ec_private_key: ec.EllipticCurvePrivateKey) -> Callable[..., str]:
+    """make_token() -> a valid ES256 user token. Override claims with keyword arguments;
+    pass a claim as None to leave it out."""
+
+    def _make(*, algorithm: str = "ES256", key: Any = None, **claim_overrides: Any) -> str:
+        if key is None:
+            key = HS_SECRET if algorithm == "HS256" else ec_private_key
+        return jwt.encode(
+            base_claims(**claim_overrides),
+            key,
+            algorithm=algorithm,
+            headers={"kid": "test-key"},
+        )
+
+    return _make
+
+
+class _EchoBody(BaseModel):
+    name: str = Field(min_length=1)
+    quantity: int
+
+
+def _test_router() -> APIRouter:
+    """Routes that exist only in tests, to exercise the shared plumbing."""
+    router = APIRouter(prefix="/_test")
+
+    @router.get("/whoami")
+    def whoami(user: CurrentUser) -> dict[str, Any]:
+        return {"id": str(user.id), "email": user.email}
+
+    @router.post("/echo")
+    def echo(body: _EchoBody) -> dict[str, Any]:
+        return body.model_dump()
+
+    @router.get("/missing")
+    def missing() -> None:
+        raise errors.not_found("Project")
+
+    @router.get("/boom")
+    def boom() -> None:
+        raise RuntimeError("secret internal detail")
+
+    return router
+
+
+@pytest.fixture
+def app(settings: Settings, verifier: TokenVerifier) -> FastAPI:
+    application = create_app(settings)
+    application.include_router(_test_router(), prefix=settings.api_v1_prefix)
+    application.dependency_overrides[get_token_verifier] = lambda: verifier
+    return application
+
+
+@pytest.fixture
+def client(app: FastAPI) -> TestClient:
+    return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def auth_header(make_token: Callable[..., str]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {make_token()}"}
+
+
+def new_user_id() -> str:
+    return str(uuid.uuid4())
