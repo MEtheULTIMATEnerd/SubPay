@@ -1,0 +1,175 @@
+# Development guide
+
+Living document. Last updated: 2026-10-04.
+
+How to set up, run, test and contribute to SubPay. Sections marked
+**(coming)** describe pieces that are agreed but not in the repository yet.
+They are updated in the same merge request that adds the piece.
+
+## 1. Prerequisites
+
+| Tool | Version | Needed for |
+|---|---|---|
+| Git | any recent | Everything |
+| Node.js | 22.12 or newer (24 also works) | `apps/web` |
+| npm | ships with Node | `apps/web` |
+| Python | 3.10 or newer | `services/api`, `services/ai` **(coming)** |
+| Supabase project | shared team project | Database, Auth, Storage **(coming)** |
+| Supabase CLI | latest | Applying migrations **(coming)** |
+
+## 2. Get the code
+
+```bash
+git clone https://git.infotech.monash.edu/fit3195/fit3195-s2-2026/DTE303.git
+cd DTE303
+git switch main
+```
+
+`main` is the integration branch. The repository also has an old `master`
+branch that holds only the initial empty commit. Do not use it and do not merge
+it into `main`.
+
+## 3. Run the web app
+
+```bash
+cd apps/web
+npm install
+npm run dev          # http://localhost:3000
+```
+
+Today the web app runs entirely in the browser on mock data. Choose
+**Continue as demo user** on the login page. Data is saved in `localStorage`.
+To start over, go to **Profile & settings → Reset demo data**.
+
+## 4. Run the API **(coming)**
+
+Lands with the FastAPI foundation. It will run from `services/api` and serve
+`http://localhost:8000/api/v1`, with OpenAPI docs at `/api/v1/docs`.
+
+## 5. Environment variables
+
+Real values go in untracked `.env` files. Only `.env.example` files, with
+placeholder values, are committed. Never commit a real key.
+
+**Web app (`apps/web/.env.local`) (coming)**
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (anon / publishable) key. Safe for the browser. |
+| `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI service, e.g. `http://localhost:8000` |
+
+**API (`services/api/.env`) (coming)**
+
+| Variable | Purpose |
+|---|---|
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Public key, used with the caller's JWT so RLS applies |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only key that bypasses RLS. Never in the web app. |
+| `SUPABASE_JWT_SECRET` | Only for projects that sign JWTs with a shared secret |
+| `CORS_ORIGINS` | Allowed web origins, e.g. `http://localhost:3000` |
+| `AI_SERVICE_URL` | Base URL of the AI service |
+
+Anything prefixed `NEXT_PUBLIC_` is shipped to the browser. The service-role
+key must never have that prefix and must never appear under `apps/web`.
+
+## 6. Database changes **(coming)**
+
+1. Add a new file in `supabase/migrations/` named `<YYYYMMDDHHMMSS>_<short_name>.sql`.
+2. Follow the conventions in [database-schema.md](database-schema.md): UUID keys, timestamps, foreign keys, indexes, RLS enabled in the same file.
+3. Update `database-schema.md` in the same merge request.
+4. Never edit a merged migration. Add a new one.
+
+## 7. Checks
+
+Run these before opening a merge request. All of them must pass.
+
+**Web (`apps/web`)**
+
+```bash
+npm run lint
+npm run build        # also generates the route types that typecheck needs
+npm run typecheck
+npm test             # Vitest
+```
+
+On a fresh clone, run `npm run build` (or `npm run dev` once) before
+`npm run typecheck`. Next.js generates route types such as `LayoutProps` at
+that point, and typecheck fails without them.
+
+**API (`services/api`) (coming)**
+
+```bash
+pytest
+```
+
+End-to-end tests with Playwright are added with the features that need them.
+
+## 8. Git workflow
+
+### Branches
+
+Never commit directly to `main`. Work on a branch and merge through a merge request.
+
+| Prefix | Use | Example |
+|---|---|---|
+| `feature/` | New product capability | `feature/contract-management` |
+| `fix/` | Bug fix | `fix/project-date-validation` |
+| `chore/` | Tooling, structure, docs, config | `chore/platform-foundation` |
+
+Agreed branch names by workstream:
+
+| Workstream | Branches |
+|---|---|
+| Platform | `chore/platform-foundation`, `feature/auth-platform`, `feature/project-management` |
+| Data | `feature/contract-management`, `feature/contract-review`, `feature/evidence-management` |
+| AI | chosen by Arya, under `feature/` |
+| Claim experience | chosen by Rehan, under `feature/` |
+
+### Commits
+
+- Small, focused and reviewable. One logical change per commit.
+- Title in the imperative, under about 70 characters: `Add project archive endpoint`.
+- Body explains what changed and why, when the title is not enough.
+
+### Before opening a merge request
+
+1. Pull the latest `main` and rebase or merge it into your branch.
+2. Run tests.
+3. Run type checking.
+4. Run linting.
+5. Run the build.
+6. Review your own changed files.
+7. Explain any migration changes.
+8. Confirm no other developer's files were changed unnecessarily.
+
+### Merge request description
+
+- Summary of the change
+- Files or areas changed
+- Database migrations, if any, and what they do
+- Tests added or updated
+- Integration notes for teammates (new endpoints, changed shapes, new env vars)
+
+At least one teammate reviews before merging.
+
+## 9. Team rules
+
+- Organise by application and feature, not by person.
+- Agree API contracts and database schemas before building in parallel. They live in [api-contracts.md](api-contracts.md) and [database-schema.md](database-schema.md).
+- Do not change another teammate's core interface or data contract without agreement.
+- Every feature needs acceptance criteria and relevant tests.
+- Use seeded, fictional demo data for repeatable integration testing.
+- AI results include confidence and reasoning sufficient for human review.
+- Human confirmation is required before an AI suggestion becomes authoritative.
+- Do not send confidential customer or project data to external AI services without permission and appropriate controls.
+- Do not expose secrets. The service-role key stays on the server.
+
+## 10. Where things are documented
+
+| Question | Document |
+|---|---|
+| How the system fits together | [architecture.md](architecture.md) |
+| Endpoints, request and response shapes, error format | [api-contracts.md](api-contracts.md) |
+| Tables, columns, RLS, migration rules | [database-schema.md](database-schema.md) |
+| Setup, checks, Git workflow | this file |

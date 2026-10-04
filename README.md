@@ -4,6 +4,24 @@
 
 A clickable, fully working **frontend prototype** of the SubPay MVP (F01–F20), styled from the Assessment 2b deck. It runs entirely in the browser: a mock service layer and a deterministic mock AI stand in for FastAPI, Supabase and Arya's AI services, using the same data shapes the team prompts agreed on.
 
+## Repository
+
+```
+apps/web/            Next.js frontend (the working prototype described below)
+services/api/        FastAPI application, /api/v1     (not built yet)
+services/ai/         AI service, /ai/v1               (not built yet)
+supabase/            Migrations and seed data         (not built yet)
+packages/contracts/  Shared API / type contracts
+tests/integration/   Cross-service end-to-end tests
+docs/                Architecture, API contracts, database schema, development guide
+```
+
+Start with [docs/development-guide.md](docs/development-guide.md). The shared
+contracts every workstream builds against are in
+[docs/api-contracts.md](docs/api-contracts.md) and
+[docs/database-schema.md](docs/database-schema.md). What is built and what is
+still mock is tracked in [docs/architecture.md](docs/architecture.md#7-current-state).
+
 ## Run it
 
 ```bash
