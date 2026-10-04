@@ -135,10 +135,11 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 
 | Method | Path | Purpose | State |
 |---|---|---|---|
-| POST | `/api/v1/projects/{project_id}/contracts` | Upload a contract (PDF or DOCX) and start extraction | Mock |
-| GET | `/api/v1/projects/{project_id}/contracts` | List contracts with processing status | Mock |
-| GET | `/api/v1/contracts/{contract_id}` | Get one contract, including a signed download URL | Mock |
-| GET | `/api/v1/contracts/{contract_id}/items` | List extracted contract items | Mock |
+| POST | `/api/v1/projects/{project_id}/contracts` | Upload a contract (PDF or DOCX) and start extraction. Returns `201`. | Live |
+| GET | `/api/v1/projects/{project_id}/contracts` | List contracts with processing status, newest first | Live |
+| GET | `/api/v1/contracts/{contract_id}` | Get one contract, including a signed download URL | Live |
+| POST | `/api/v1/contracts/{contract_id}/extract` | Run extraction again after a failure | Live |
+| GET | `/api/v1/contracts/{contract_id}/items` | List extracted contract items in schedule order | Live |
 | PATCH | `/api/v1/contract-items/{item_id}` | Human edit of an extracted item | Mock |
 | POST | `/api/v1/contract-items/{item_id}/confirm` | Human confirms an item | Mock |
 | POST | `/api/v1/contract-items/{item_id}/reject` | Human rejects an item | Mock |
@@ -271,6 +272,51 @@ clears them. `site_address` is at most 500 characters.
 Field lists are in [database-schema.md](database-schema.md). Responses return
 the table columns under the same names.
 
+### Uploading a contract
+
+`POST /api/v1/projects/{project_id}/contracts` takes `multipart/form-data`
+with one part named `file`.
+
+- PDF or DOCX, up to 25 MB. The type is judged from the file's contents and its extension, not from the `Content-Type` the browser sends.
+- `415 unsupported_media_type` for anything else, `413 payload_too_large` over the limit, `422` for an empty or missing file, `404` when the project is not the caller's.
+- The file is stored privately at `contracts/{project_id}/{contract_id}/original.<ext>`. The uploaded filename is kept for display only and is never used in the path.
+
+The response is the new Contract with `processing_status: "processing"`.
+Extraction runs after the response is sent. Poll
+`GET /api/v1/contracts/{contract_id}` until the status is `ready` or `failed`.
+
+```json
+{
+  "id": "c1d2e3f4-0000-4000-8000-000000000001",
+  "project_id": "5a0d8a0e-2c9b-4a55-8a8e-0a2b9a6c1d22",
+  "original_filename": "Subcontract_HumeSt_Formwork.pdf",
+  "storage_path": "contracts/5a0d8a0e-.../c1d2e3f4-.../original.pdf",
+  "mime_type": "application/pdf",
+  "size_bytes": 482113,
+  "page_count": null,
+  "processing_status": "processing",
+  "error": null,
+  "uploaded_by": "7f1f5c58-2a4e-4b43-8a34-3f8a1f0c9b10",
+  "created_at": "2026-10-04T05:12:00Z",
+  "updated_at": "2026-10-04T05:12:00Z",
+  "processed_at": null
+}
+```
+
+`GET /api/v1/contracts/{contract_id}` returns the same fields plus
+`download_url`: a signed link to the stored document that expires after five
+minutes. Ask for the contract again to get a fresh link.
+
+`POST /api/v1/contracts/{contract_id}/extract` restarts extraction for a
+contract that `failed`. It returns `409 conflict` when the contract is already
+`ready` or is still `processing`. A contract stuck in `processing` for more
+than ten minutes can be retried. Re-running never touches an item a person has
+edited, confirmed or rejected.
+
+`GET /api/v1/contracts/{contract_id}/items` returns `{ "items": [ContractItem] }`.
+Every extracted item arrives as `review_status: "draft"` with
+`extraction_confidence` and an `extracted_values` snapshot of the AI's answer.
+
 - **Contract**: `processing_status` is `uploaded`, `processing`, `ready` or `failed`. A failed contract carries a user-safe `error` message.
 - **ContractItem**: `review_status` is `draft`, `confirmed` or `rejected`. `extraction_confidence` is the AI's confidence, or `null` for an item a person added. Quantity, unit, rate, amount, conditions, notice requirement and due date are all nullable, because not every contract contains them.
 - **Evidence**: `evidence_type` is `photo`, `document`, `docket`, `message` or `other`. `metadata` is a free-form object, for example `{ "location": null, "source": "mobile_upload", "tags": [] }`.
@@ -316,7 +362,20 @@ FastAPI calls these server to server. The browser never does.
 
 ### Contract extraction
 
-Input: `contract_id` and a reference to the stored document.
+`POST /ai/v1/contracts/{contract_id}/extract`. The API sends:
+
+```json
+{
+  "contract_id": "uuid",
+  "original_filename": "Subcontract_HumeSt_Formwork.pdf",
+  "mime_type": "application/pdf",
+  "document_url": "https://<project>.supabase.co/storage/v1/object/sign/contracts/...?token=..."
+}
+```
+
+`document_url` is a short-lived signed link the AI service uses to fetch the
+document. It expires after five minutes, so fetch it straight away. The AI
+service answers:
 
 ```json
 {
@@ -339,7 +398,16 @@ Input: `contract_id` and a reference to the stored document.
 }
 ```
 
-Only `item_code`, `description` and `confidence` are guaranteed. Everything else may be `null`.
+Only `item_code`, `description` and `confidence` are guaranteed. Everything
+else may be `null` or left out. `confidence` is between 0 and 1, and
+`contract_id` must match the request. An answer that breaks these rules is
+treated as an AI outage.
+
+The API side of this boundary is `services/api/app/ai/extraction.py`. Until the
+AI service exists, a deterministic mock answers instead
+(`AI_EXTRACTION_PROVIDER=mock`, the default). Setting
+`AI_EXTRACTION_PROVIDER=http` makes the API call `AI_SERVICE_URL`. Nothing
+else changes.
 
 ### Evidence matching
 

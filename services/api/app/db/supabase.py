@@ -81,6 +81,20 @@ class SupabaseRest:
         rows = self._request("POST", table, json=row, headers={"Prefer": "return=representation"})
         return rows[0]
 
+    def insert_many(self, table: str, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Insert several rows in one request, so they are stored all together or not at all."""
+        if not rows:
+            return []
+        return self._request("POST", table, json=rows, headers={"Prefer": "return=representation"})
+
+    def delete(self, table: str, filters: dict[str, str]) -> list[dict[str, Any]]:
+        """Returns the rows that were deleted. Rows the caller may not delete are left alone."""
+        if not filters:
+            raise ValueError("delete() needs at least one filter")
+        return self._request(
+            "DELETE", table, params=filters, headers={"Prefer": "return=representation"}
+        )
+
     def update(
         self, table: str, filters: dict[str, str], changes: dict[str, Any]
     ) -> list[dict[str, Any]]:

@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
+from app.core.limits import BodySizeLimitMiddleware
 
 logger = logging.getLogger("subpay.api")
 
@@ -42,6 +43,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if override is not None:
         app.dependency_overrides[get_settings] = lambda: override
 
+    # Added before CORS so that CORS wraps it and a 413 still carries CORS headers.
+    app.add_middleware(BodySizeLimitMiddleware)
     # Bearer tokens, not cookies, so credentials stay off and origins stay explicit.
     app.add_middleware(
         CORSMiddleware,

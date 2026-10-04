@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     ai_service_url: str = "http://localhost:8001"
+    # "mock": deterministic built-in extraction, no AI service needed.
+    # "http": call the AI service at AI_SERVICE_URL.
+    ai_extraction_provider: str = "mock"
+
+    # How long a signed download link for a stored file stays valid.
+    signed_url_seconds: int = 300
 
     @property
     def cors_origin_list(self) -> list[str]:

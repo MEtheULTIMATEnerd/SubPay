@@ -132,6 +132,36 @@ def test_update_is_always_filtered() -> None:
     assert dict(request.url.params) == {"id": f"eq.{PROJECT_ROW['id']}"}
 
 
+def test_insert_many_stores_all_rows_in_one_request() -> None:
+    rest, recorder = make_rest(rows({"id": "1"}, {"id": "2"}, status=201))
+    stored = rest.insert_many("contract_items", [{"item_code": "1"}, {"item_code": "2"}])
+
+    (request,) = recorder.requests
+    assert request.method == "POST"
+    assert json.loads(request.content) == [{"item_code": "1"}, {"item_code": "2"}]
+    assert request.headers["prefer"] == "return=representation"
+    assert len(stored) == 2
+
+
+def test_insert_many_with_nothing_to_insert_makes_no_request() -> None:
+    rest, recorder = make_rest(rows())
+    assert rest.insert_many("contract_items", []) == []
+    assert recorder.requests == []
+
+
+def test_delete_is_always_filtered() -> None:
+    rest, recorder = make_rest(rows({"id": "1"}))
+    with pytest.raises(ValueError):
+        rest.delete("contract_items", {})
+    assert recorder.requests == []
+
+    deleted = rest.delete("contract_items", {"contract_id": "eq.c1", "review_status": "eq.draft"})
+    request = recorder.requests[0]
+    assert request.method == "DELETE"
+    assert dict(request.url.params) == {"contract_id": "eq.c1", "review_status": "eq.draft"}
+    assert deleted == [{"id": "1"}]
+
+
 def test_update_that_matches_nothing_returns_no_rows() -> None:
     """A row hidden by Row Level Security looks exactly like a missing row."""
     rest, _ = make_rest(rows())

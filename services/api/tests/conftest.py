@@ -16,12 +16,25 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentUser, get_platform_repository, get_token_verifier
+from app.ai.extraction import MockExtractionProvider
+from app.api.deps import (
+    CurrentUser,
+    get_contract_repository,
+    get_extraction_provider,
+    get_file_storage,
+    get_platform_repository,
+    get_token_verifier,
+)
 from app.core import errors
 from app.core.config import Settings
 from app.core.security import TokenVerifier
 from app.main import create_app
-from tests.fakes import FakeDatabase, FakePlatformRepository
+from tests.fakes import (
+    FakeContractRepository,
+    FakeDatabase,
+    FakePlatformRepository,
+    FakeStorage,
+)
 
 SUPABASE_URL = "https://test-project.supabase.co"
 ISSUER = f"{SUPABASE_URL}/auth/v1"
@@ -155,7 +168,24 @@ def db() -> FakeDatabase:
 
 
 @pytest.fixture
-def app(settings: Settings, verifier: TokenVerifier, db: FakeDatabase) -> FastAPI:
+def storage() -> FakeStorage:
+    return FakeStorage()
+
+
+@pytest.fixture
+def extractor() -> MockExtractionProvider:
+    """The built-in mock AI. Set `extractor.available = False` to simulate an outage."""
+    return MockExtractionProvider()
+
+
+@pytest.fixture
+def app(
+    settings: Settings,
+    verifier: TokenVerifier,
+    db: FakeDatabase,
+    storage: FakeStorage,
+    extractor: MockExtractionProvider,
+) -> FastAPI:
     application = create_app(settings)
     application.include_router(_test_router(), prefix=settings.api_v1_prefix)
     application.dependency_overrides[get_token_verifier] = lambda: verifier
@@ -163,7 +193,13 @@ def app(settings: Settings, verifier: TokenVerifier, db: FakeDatabase) -> FastAP
     def platform_for_caller(user: CurrentUser) -> FakePlatformRepository:
         return FakePlatformRepository(db, user.id)
 
+    def contracts_for_caller(user: CurrentUser) -> FakeContractRepository:
+        return FakeContractRepository(db, user.id)
+
     application.dependency_overrides[get_platform_repository] = platform_for_caller
+    application.dependency_overrides[get_contract_repository] = contracts_for_caller
+    application.dependency_overrides[get_file_storage] = lambda: storage
+    application.dependency_overrides[get_extraction_provider] = lambda: extractor
     return application
 
 

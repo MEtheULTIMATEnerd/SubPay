@@ -46,12 +46,20 @@ app/
       health.py      GET /api/v1/health
       me.py          GET, PATCH /api/v1/me
       projects.py    /api/v1/projects
+      contracts.py   Contract upload, list, get, extraction retry, items
   schemas/           Request and response shapes (Pydantic)
   db/
     supabase.py      SupabaseRest: data access as the signed-in user
+    storage.py       SupabaseStorage: file upload and signed URLs as the signed-in user
   repositories/      One class per feature area, built on SupabaseRest
+  services/          Workflows that combine repositories, storage and AI
+    uploads.py       File checks shared by every upload
+    contracts.py     Upload, store, extract, save items
+  ai/
+    extraction.py    The AI boundary: ExtractionProvider, mock and HTTP providers
 tests/
-  fakes.py           In-memory repository used by the endpoint tests
+  fakes.py           In-memory repositories and storage used by the endpoint tests
+  files.py           Small valid sample files for upload tests
 ```
 
 ## Adding endpoints

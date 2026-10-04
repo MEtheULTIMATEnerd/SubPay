@@ -4,3 +4,4 @@ uvicorn[standard]>=0.54,<1
 pydantic-settings>=2.15,<3
 PyJWT[crypto]>=2.15,<3
 httpx2>=2.13,<3   # HTTP client for calls to Supabase
+python-multipart>=0.0.20   # file uploads (multipart/form-data)

@@ -57,6 +57,7 @@ Migrations so far:
 |---|---|
 | `20261004090000_platform_foundation.sql` | `organisations`, `profiles`, `projects`, the helper functions in section 3, the sign-up trigger, privileges and RLS policies |
 | `20261004120000_contracts_and_evidence.sql` | `contracts`, `contract_items`, `evidence`, `can_access_contract()`, the review-tracking and evidence-code triggers, privileges and RLS policies |
+| `20261004130000_storage_buckets.sql` | The private `contracts` and `evidence` storage buckets, `storage_object_project_id()`, and the storage policies |
 
 pgvector is not enabled yet. The first migration that needs it (Arya's
 embedding tables) should start with
@@ -120,8 +121,9 @@ client cannot choose them. Signed-out callers (`anon`) get nothing.
 
 ### Checking it works
 
-`supabase/tests/platform_foundation.sql` and
-`supabase/tests/contracts_and_evidence.sql` sign up test users in two
+`supabase/tests/platform_foundation.sql`,
+`supabase/tests/contracts_and_evidence.sql` and
+`supabase/tests/storage_buckets.sql` sign up test users in two
 organisations and assert the rules above, inside a transaction that is rolled
 back. Add a similar file for each new set of tables. See
 [development-guide.md](development-guide.md#6-database).
@@ -344,13 +346,20 @@ the core tables and record model / provider metadata. They do not duplicate
 
 ## 7. Storage buckets (owner: Kinori)
 
-| Bucket | Public | Object path inside the bucket |
-|---|---|---|
-| `contracts` | No | `{project_id}/{contract_id}/original.<ext>` |
-| `evidence` | No | `{project_id}/{evidence_id}/original.<ext>` |
+| Bucket | Public | Size limit | File types | Object path inside the bucket |
+|---|---|---|---|---|
+| `contracts` | No | 25 MB | PDF, DOCX | `{project_id}/{contract_id}/original.<ext>` |
+| `evidence` | No | 50 MB | JPEG, PNG, WebP, HEIC/HEIF, PDF, DOCX, XLSX, plain text, CSV | `{project_id}/{evidence_id}/original.<ext>` |
 
 The `storage_path` column stores the bucket name followed by the object path,
 e.g. `contracts/{project_id}/{contract_id}/original.pdf`.
 
-Storage policies use `public.can_access_project()` on the first segment of the
-object path. Files are served through signed URLs only.
+Policies on `storage.objects`, for signed-in users only:
+
+- **Read** (which is also what allows a signed URL to be created): the first folder of the object's name is a project in the caller's organisation.
+- **Upload**: the same, and the name is exactly three parts, `{project_id}/{record_id}/{file}`.
+- There is no update or delete policy. Once uploaded, a source file cannot be replaced, renamed or removed by a user.
+
+`public.storage_object_project_id(name)` returns the project id from an object
+name, or null when the first folder is not a uuid. Files are served through
+short-lived signed URLs only, never public links.

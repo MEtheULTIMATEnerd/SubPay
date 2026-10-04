@@ -107,6 +107,7 @@ placeholder values, are committed. Never commit a real key.
 | `SUPABASE_JWT_SECRET` | Only for projects that still sign JWTs with the legacy shared secret. Leave empty otherwise. |
 | `CORS_ORIGINS` | Allowed web origins, e.g. `http://localhost:3000` |
 | `AI_SERVICE_URL` | Base URL of the AI service |
+| `AI_EXTRACTION_PROVIDER` | `mock` (default) uses the built-in deterministic extraction. `http` calls the AI service. |
 
 Anything prefixed `NEXT_PUBLIC_` is shipped to the browser. The service-role
 key must never have that prefix and must never appear under `apps/web`.
@@ -140,6 +141,7 @@ Seed files never contain passwords. They are safe to run more than once.
 ```bash
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/platform_foundation.sql
 psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/contracts_and_evidence.sql
+psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/storage_buckets.sql
 ```
 
 Each ends with `<name>: all checks passed`. Any other ending is a failure. The

@@ -137,6 +137,8 @@ AI suggestions -> human confirmation -> claim readiness -> evidence package
 - AI output is always stored as a suggestion (`review_status = draft`, `status = suggested`). Only a human action changes it to confirmed or rejected.
 - AI results carry a confidence and a reason so a person can review them.
 - If the AI service is down, uploads and manual linking still work. Processing is marked `failed` and can be retried.
+- The API reaches the AI service through one interface per capability (`services/api/app/ai/`). Each has a deterministic mock, so every other workstream can build without the real model. Switching to the real service is a configuration change.
+- Extraction runs in the API process after the upload response is sent, using the uploader's own access. That is enough for the MVP. A long-running model call belongs in a separate worker later.
 - No confidential customer or project data goes to an external AI provider without permission and appropriate controls. Demo data is fictional.
 
 ## 6. File storage
@@ -145,6 +147,10 @@ AI suggestions -> human confirmation -> claim readiness -> evidence package
 - Project-scoped paths: `contracts/{project_id}/{contract_id}/original.<ext>` and `evidence/{project_id}/{evidence_id}/original.<ext>`.
 - Files are opened through short-lived signed URLs issued after an access check. No public URLs.
 - The database stores the path and metadata. The file bytes live in Storage, not in Postgres.
+- The browser uploads to FastAPI, which checks the file and then stores it in Supabase Storage **as the signed-in user**, so the storage policies apply as well as the API's own checks.
+- A file's type is decided from its contents, not from what the browser claims. The uploaded filename is kept for display and never used in a storage path.
+- Uploaded files are immutable for users: no overwrite, rename or delete.
+- Requests larger than 60 MB are refused before they are read.
 
 ## 7. Current state
 
@@ -158,7 +164,8 @@ Updated as each piece lands.
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Done. The web app uses them in live mode. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
-| Contracts, contract items, evidence, storage | Database tables done. Storage buckets, API endpoints and web wiring not started: the screens still use mock data. |
+| Contracts and contract items | Database, storage and API done: upload, list, get with download link, extraction (mock provider) and retry. Item review endpoints and web wiring not started: the screens still use mock data. |
+| Evidence | Database tables and storage bucket done. API and web wiring not started. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |
 

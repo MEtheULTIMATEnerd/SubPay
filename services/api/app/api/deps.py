@@ -16,6 +16,7 @@ import httpx2
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.ai.extraction import ExtractionProvider, HttpExtractionProvider, MockExtractionProvider
 from app.core import errors
 from app.core.config import Settings, get_settings
 from app.core.security import (
@@ -24,8 +25,11 @@ from app.core.security import (
     TokenVerifier,
     VerifierUnavailableError,
 )
+from app.db.storage import FileStorage, SupabaseStorage
 from app.db.supabase import SupabaseRest, build_http_client
+from app.repositories.contracts import ContractRepository, SupabaseContractRepository
 from app.repositories.platform import PlatformRepository, SupabasePlatformRepository
+from app.services.contracts import ContractService
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -105,3 +109,48 @@ def get_platform_repository(user: CurrentUser, rest: UserSupabase) -> PlatformRe
 
 
 Platform = Annotated[PlatformRepository, Depends(get_platform_repository)]
+
+
+def get_file_storage(
+    user: CurrentUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> FileStorage:
+    """Supabase Storage as the signed-in user, so the storage policies apply."""
+    return SupabaseStorage(
+        http,
+        base_url=settings.supabase_base_url,
+        anon_key=settings.supabase_anon_key,
+        access_token=user.access_token,
+    )
+
+
+UserStorage = Annotated[FileStorage, Depends(get_file_storage)]
+
+
+def get_extraction_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> ExtractionProvider:
+    """The AI boundary. "mock" needs no AI service; "http" calls AI_SERVICE_URL."""
+    if settings.ai_extraction_provider == "http":
+        return HttpExtractionProvider(http, settings.ai_service_url)
+    return MockExtractionProvider()
+
+
+def get_contract_repository(rest: UserSupabase) -> ContractRepository:
+    return SupabaseContractRepository(rest)
+
+
+def get_contract_service(
+    repository: Annotated[ContractRepository, Depends(get_contract_repository)],
+    storage: UserStorage,
+    extractor: Annotated[ExtractionProvider, Depends(get_extraction_provider)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> ContractService:
+    return ContractService(
+        repository, storage, extractor, signed_url_seconds=settings.signed_url_seconds
+    )
+
+
+Contracts = Annotated[ContractService, Depends(get_contract_service)]
