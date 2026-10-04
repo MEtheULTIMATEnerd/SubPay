@@ -1,0 +1,52 @@
+@import "tailwindcss";
+
+/* Palette taken from the Assessment 2b deck */
+@theme {
+  --color-ink: #0f2e27;
+  --color-ink-2: #122924;
+  --color-ink-3: #2c5f51;
+  --color-muted: #6a817b;
+  --color-line: #dde6e3;
+  --color-surface: #f3f6f5;
+  --color-surface-2: #eef2f1;
+  --color-brand: #2bb98a;
+  --color-brand-dark: #1e9a72;
+  --color-mint: #e7f6ef;
+  --color-mint-2: #cfe7dc;
+  --color-sage: #9fc4b8;
+  --color-amber: #d8891f;
+  --color-amber-bg: #fcf0dc;
+  --color-red: #c4423a;
+  --color-red-bg: #fbe6e4;
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+body {
+  background: var(--color-surface);
+  color: var(--color-ink-2);
+}
+
+@utility card { @apply rounded-2xl border border-line bg-white; }
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition
+    disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand;
+}
+@utility btn-primary { @apply btn bg-brand text-white hover:bg-brand-dark; }
+@utility btn-dark { @apply btn bg-ink text-white hover:bg-ink-3; }
+@utility btn-outline { @apply btn border border-line bg-white text-ink-2 hover:border-sage; }
+@utility btn-danger { @apply btn border border-red/30 bg-white text-red hover:bg-red-bg; }
+@utility btn-sm { @apply px-3.5 py-1.5 text-xs; }
+@utility input {
+  @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink-2 outline-none placeholder:text-muted/70
+    focus:border-brand focus:ring-2 focus:ring-brand/20;
+}
+@utility label { @apply mb-1.5 block text-sm font-medium text-ink-2; }
+@utility eyebrow { @apply text-sm tracking-wide text-muted; }
+@utility pill { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap; }
+@utility link { @apply font-semibold text-brand-dark hover:underline; }
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: white; }
+  .card { border-color: #ccc; break-inside: avoid; }
+}
