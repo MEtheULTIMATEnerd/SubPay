@@ -40,35 +40,55 @@ app/
     errors.py        ApiError and the single error shape
     security.py      Supabase access-token verification
   api/
-    deps.py          CurrentUser dependency
+    deps.py          CurrentUser, UserSupabase and Platform dependencies
     v1/
       router.py      Everything under /api/v1
       health.py      GET /api/v1/health
+      me.py          GET, PATCH /api/v1/me
+      projects.py    /api/v1/projects
+  schemas/           Request and response shapes (Pydantic)
+  db/
+    supabase.py      SupabaseRest: data access as the signed-in user
+  repositories/      One class per feature area, built on SupabaseRest
 tests/
+  fakes.py           In-memory repository used by the endpoint tests
 ```
 
 ## Adding endpoints
 
-1. Create `app/api/v1/<feature>.py` with an `APIRouter`.
-2. Include it in `app/api/v1/router.py`.
-3. Take `user: CurrentUser` on every endpoint that needs a signed-in user.
+`app/api/v1/projects.py` with `app/repositories/platform.py` is the worked
+example to copy.
+
+1. Put request and response shapes in `app/schemas/<feature>.py`.
+2. Put data access in `app/repositories/<feature>.py`, built on `SupabaseRest`.
+3. Create `app/api/v1/<feature>.py` with an `APIRouter` and include it in `app/api/v1/router.py`.
 4. Raise errors with the helpers in `app/core/errors.py`.
+5. Test the endpoints with an in-memory fake repository, as `tests/fakes.py` does.
 
 ```python
+from uuid import UUID
+
 from fastapi import APIRouter
 
-from app.api.deps import CurrentUser
+from app.api.deps import CurrentUser, UserSupabase
 from app.core import errors
 
 router = APIRouter(tags=["contracts"])
 
 
 @router.get("/contracts/{contract_id}")
-def get_contract(contract_id: str, user: CurrentUser):
+def get_contract(contract_id: UUID, user: CurrentUser, supabase: UserSupabase):
     # user.id is the verified Supabase user id.
-    # user.access_token is forwarded to Supabase so Row Level Security applies.
-    raise errors.not_found("Contract")
+    # supabase queries as that user, so Row Level Security hides other
+    # organisations' rows. A hidden row and a missing row both come back empty.
+    rows = supabase.select("contracts", {"id": f"eq.{contract_id}"}, limit=1)
+    if not rows:
+        raise errors.not_found("Contract")
+    return rows[0]
 ```
+
+`SupabaseRest` has `select`, `insert` and `update`. Filters use PostgREST
+syntax: `{"status": "eq.active"}`. It never uses the service-role key.
 
 Rules, in full in [docs/api-contracts.md](../../docs/api-contracts.md):
 

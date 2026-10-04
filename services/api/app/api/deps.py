@@ -12,6 +12,7 @@ organisation id from the request body, path or query string.
 from functools import lru_cache
 from typing import Annotated
 
+import httpx2
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -23,6 +24,8 @@ from app.core.security import (
     TokenVerifier,
     VerifierUnavailableError,
 )
+from app.db.supabase import SupabaseRest, build_http_client
+from app.repositories.platform import PlatformRepository, SupabasePlatformRepository
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -69,3 +72,36 @@ def get_current_user(
 
 
 CurrentUser = Annotated[AuthenticatedUser, Depends(get_current_user)]
+
+
+@lru_cache
+def get_http_client() -> httpx2.Client:
+    """One pooled HTTP client for all calls to Supabase."""
+    return build_http_client()
+
+
+def get_supabase_rest(
+    user: CurrentUser,
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> SupabaseRest:
+    """Supabase data access as the signed-in user, so Row Level Security applies.
+
+    Use this in your own repositories. It never uses the service-role key.
+    """
+    return SupabaseRest(
+        http,
+        base_url=settings.supabase_base_url,
+        anon_key=settings.supabase_anon_key,
+        access_token=user.access_token,
+    )
+
+
+UserSupabase = Annotated[SupabaseRest, Depends(get_supabase_rest)]
+
+
+def get_platform_repository(user: CurrentUser, rest: UserSupabase) -> PlatformRepository:
+    return SupabasePlatformRepository(rest, user.id)
+
+
+Platform = Annotated[PlatformRepository, Depends(get_platform_repository)]

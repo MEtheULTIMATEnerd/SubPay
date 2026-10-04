@@ -111,21 +111,23 @@ Confirmation is a separate human action and a separate endpoint.
 ## 2. Endpoint index
 
 State: **Planned** means agreed but not implemented. **Mock** means the web
-prototype implements it in `apps/web/lib/api.ts` only. **Live** means FastAPI serves it.
+prototype implements it in `apps/web/lib/api.ts` only. **Live** means FastAPI
+serves it. The web app keeps using its mock function for a Live endpoint until
+that screen is wired to the API.
 
 ### Platform (F01, F02)
 
 | Method | Path | Purpose | State |
 |---|---|---|---|
 | GET | `/api/v1/health` | Liveness check, no auth | Live |
-| GET | `/api/v1/me` | Signed-in profile and organisation | Mock |
-| PATCH | `/api/v1/me` | Update own `full_name` | Mock |
-| GET | `/api/v1/projects` | List the organisation's projects. Optional `?status=active\|archived` | Mock |
-| POST | `/api/v1/projects` | Create a project | Mock |
-| GET | `/api/v1/projects/{project_id}` | Get one project | Mock |
-| PATCH | `/api/v1/projects/{project_id}` | Edit a project | Mock |
-| POST | `/api/v1/projects/{project_id}/archive` | Archive | Mock |
-| POST | `/api/v1/projects/{project_id}/restore` | Restore to active | Mock |
+| GET | `/api/v1/me` | Signed-in profile and organisation | Live |
+| PATCH | `/api/v1/me` | Update own `full_name` | Live |
+| GET | `/api/v1/projects` | List the organisation's projects, newest first. Optional `?status=active\|archived`, `limit`, `offset` | Live |
+| POST | `/api/v1/projects` | Create a project. Returns `201`. | Live |
+| GET | `/api/v1/projects/{project_id}` | Get one project | Live |
+| PATCH | `/api/v1/projects/{project_id}` | Edit a project | Live |
+| POST | `/api/v1/projects/{project_id}/archive` | Archive. Safe to repeat. | Live |
+| POST | `/api/v1/projects/{project_id}/restore` | Restore to active. Safe to repeat. | Live |
 
 Sign up, sign in and sign out go straight from the browser to Supabase Auth, not through this API.
 
@@ -220,6 +222,10 @@ Exact AI routes may change after team discussion. The input and output shapes in
 
 `PATCH /api/v1/me` accepts `{ "full_name": "New Name" }` and returns the same shape.
 
+A signed-in user who has no profile gets `403 forbidden` from `/me` and from
+creating a project. This should not happen in normal use, because sign-up
+creates the profile.
+
 ### Project
 
 ```json
@@ -250,8 +256,15 @@ Create (`POST /api/v1/projects`) and edit (`PATCH /api/v1/projects/{project_id}`
 | `start_date` | date or null | Optional. |
 | `end_date` | date or null | Optional. Must not be before `start_date`. |
 
-`organisation_id`, `created_by` and `status` are not accepted from the client.
-Use `/archive` and `/restore` to change status. Projects are archived, not deleted.
+`id`, `organisation_id`, `created_by` and `status` are not accepted from the
+client. If sent, they are ignored. Use `/archive` and `/restore` to change
+status. Projects are archived, not deleted, so there is no `DELETE`.
+
+A `PATCH` must include at least one editable field. `name`, `client_name` and
+`site_address` cannot be set to `null`. `start_date` and `end_date` can, which
+clears them. `site_address` is at most 500 characters.
+
+`GET /api/v1/projects` returns `{ "items": [Project, ...] }`.
 
 ## 4. Contract and evidence objects
 

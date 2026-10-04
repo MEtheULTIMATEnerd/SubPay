@@ -127,7 +127,7 @@ Updated as each piece lands.
 | Repository structure and shared docs | Done |
 | Database migrations: organisations, profiles, projects, RLS | Done. Not yet applied to a shared Supabase project. |
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
-| Profile and project endpoints | Not started |
+| Profile and project endpoints | Done in the API. The web app still uses its mock for them. |
 | Supabase Auth in the web app | Not started. Login is simulated. |
 | Contracts, contract items, evidence, storage | Not started. Mock only. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |

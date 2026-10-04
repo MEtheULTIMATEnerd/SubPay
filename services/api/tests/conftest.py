@@ -16,16 +16,23 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
-from app.api.deps import CurrentUser, get_token_verifier
+from app.api.deps import CurrentUser, get_platform_repository, get_token_verifier
 from app.core import errors
 from app.core.config import Settings
 from app.core.security import TokenVerifier
 from app.main import create_app
+from tests.fakes import FakeDatabase, FakePlatformRepository
 
 SUPABASE_URL = "https://test-project.supabase.co"
 ISSUER = f"{SUPABASE_URL}/auth/v1"
 HS_SECRET = "test-only-shared-secret-with-at-least-32-bytes!"
+
+# Organisation A: an owner and a member.  Organisation B: an owner.
 USER_ID = "a0000000-0000-4000-8000-000000000001"
+MEMBER_A_ID = "a0000000-0000-4000-8000-000000000002"
+USER_B_ID = "b0000000-0000-4000-8000-000000000001"
+# Signed in, but the sign-up trigger never created a profile.
+NO_PROFILE_ID = "c0000000-0000-4000-8000-000000000001"
 
 
 class StaticKeyClient:
@@ -136,10 +143,27 @@ def _test_router() -> APIRouter:
 
 
 @pytest.fixture
-def app(settings: Settings, verifier: TokenVerifier) -> FastAPI:
+def db() -> FakeDatabase:
+    """Two organisations: A (owner + member) and B (owner)."""
+    database = FakeDatabase()
+    org_a = database.add_organisation("Org A Formwork")
+    org_b = database.add_organisation("Org B Scaffolding")
+    database.add_profile(USER_ID, org_a, "Alex Owner", "owner")
+    database.add_profile(MEMBER_A_ID, org_a, "Morgan Member", "member")
+    database.add_profile(USER_B_ID, org_b, "Blake Owner", "owner")
+    return database
+
+
+@pytest.fixture
+def app(settings: Settings, verifier: TokenVerifier, db: FakeDatabase) -> FastAPI:
     application = create_app(settings)
     application.include_router(_test_router(), prefix=settings.api_v1_prefix)
     application.dependency_overrides[get_token_verifier] = lambda: verifier
+
+    def platform_for_caller(user: CurrentUser) -> FakePlatformRepository:
+        return FakePlatformRepository(db, user.id)
+
+    application.dependency_overrides[get_platform_repository] = platform_for_caller
     return application
 
 
@@ -149,8 +173,13 @@ def client(app: FastAPI) -> TestClient:
 
 
 @pytest.fixture
-def auth_header(make_token: Callable[..., str]) -> dict[str, str]:
-    return {"Authorization": f"Bearer {make_token()}"}
+def as_user(make_token: Callable[..., str]) -> Callable[[str], dict[str, str]]:
+    """as_user(USER_B_ID) -> Authorization header for that user."""
+
+    def _headers(user_id: str = USER_ID) -> dict[str, str]:
+        return {"Authorization": f"Bearer {make_token(sub=user_id)}"}
+
+    return _headers
 
 
 def new_user_id() -> str:

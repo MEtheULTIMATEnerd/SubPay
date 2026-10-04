@@ -1,5 +1,5 @@
 # Everything needed to run the checks: pytest and ruff.
+# (FastAPI's TestClient uses httpx2, which is already a runtime dependency.)
 -r requirements.txt
 pytest>=8
-httpx2>=2.13,<3   # HTTP client used by FastAPI's TestClient
 ruff>=0.6
