@@ -14,8 +14,9 @@ They are updated in the same merge request that adds the piece.
 | Node.js | 22.12 or newer (24 also works) | `apps/web` |
 | npm | ships with Node | `apps/web` |
 | Python | 3.10 or newer | `services/api`, `services/ai` **(coming)** |
-| Supabase project | shared team project | Database, Auth, Storage **(coming)** |
-| Supabase CLI | latest | Applying migrations **(coming)** |
+| Supabase project | shared team project | Database, Auth, Storage |
+| Supabase CLI | latest, run with `npx supabase` | Applying migrations |
+| `psql` | any recent | Running the database checks (optional) |
 
 ## 2. Get the code
 
@@ -73,12 +74,55 @@ placeholder values, are committed. Never commit a real key.
 Anything prefixed `NEXT_PUBLIC_` is shipped to the browser. The service-role
 key must never have that prefix and must never appear under `apps/web`.
 
-## 6. Database changes **(coming)**
+## 6. Database
+
+### Apply migrations to the shared Supabase project
+
+One person creates the Supabase project and shares the project reference and
+database password with the team (not in Git). Then, from the repository root:
+
+```bash
+npx supabase login
+npx supabase link --project-ref <project-ref>
+npx supabase db push                  # applies migrations not yet applied
+npx supabase db push --include-seed   # same, and also runs supabase/seed/*.sql
+```
+
+No CLI? Open the Supabase dashboard, go to the SQL editor, and run each file in
+`supabase/migrations/` in filename order.
+
+### Demo data
+
+1. In the Supabase dashboard, go to Authentication > Users > Add user and create `ollie@kearneyformwork.test` with a password of your choice. Optionally also create `sam@othersubbie.test`, a second organisation used to show isolation.
+2. Run `supabase/seed/001_demo_platform.sql` (with `--include-seed` above, or in the SQL editor).
+
+Seed files never contain passwords. They are safe to run more than once.
+
+### Check the security rules
+
+```bash
+psql "<database connection string>" -v ON_ERROR_STOP=1 -f supabase/tests/platform_foundation.sql
+```
+
+It ends with `platform_foundation: all checks passed`. Any other ending is a
+failure. The script runs in a transaction that is rolled back, so it leaves no
+data behind. It can also be pasted into the SQL editor, where "no error" means
+it passed.
+
+### Run Supabase locally (optional, needs Docker)
+
+```bash
+npx supabase start       # local Postgres, Auth and Storage
+npx supabase db reset    # rebuild from migrations, then run the seed files
+```
+
+### Making a database change
 
 1. Add a new file in `supabase/migrations/` named `<YYYYMMDDHHMMSS>_<short_name>.sql`.
-2. Follow the conventions in [database-schema.md](database-schema.md): UUID keys, timestamps, foreign keys, indexes, RLS enabled in the same file.
-3. Update `database-schema.md` in the same merge request.
-4. Never edit a merged migration. Add a new one.
+2. Follow the conventions in [database-schema.md](database-schema.md): UUID keys, timestamps, foreign keys, indexes, explicit grants, RLS enabled in the same file.
+3. Add or extend a checks file in `supabase/tests/`.
+4. Update `database-schema.md` in the same merge request.
+5. Never edit a merged migration. Add a new one.
 
 ## 7. Checks
 

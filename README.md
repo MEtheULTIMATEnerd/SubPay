@@ -10,7 +10,7 @@ A clickable, fully working **frontend prototype** of the SubPay MVP (F01–F20),
 apps/web/            Next.js frontend (the working prototype described below)
 services/api/        FastAPI application, /api/v1     (not built yet)
 services/ai/         AI service, /ai/v1               (not built yet)
-supabase/            Migrations and seed data         (not built yet)
+supabase/            Migrations, seed data and database checks
 packages/contracts/  Shared API / type contracts
 tests/integration/   Cross-service end-to-end tests
 docs/                Architecture, API contracts, database schema, development guide

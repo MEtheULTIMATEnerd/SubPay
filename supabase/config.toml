@@ -1,0 +1,14 @@
+# Supabase CLI configuration for SubPay.
+# Only settings that differ from the CLI defaults are listed.
+# Reference: https://supabase.com/docs/guides/local-development/cli/config
+
+project_id = "subpay"
+
+[db]
+# Keep in step with the Postgres version of the shared Supabase project.
+major_version = 17
+
+[db.seed]
+# Demo data loaded after migrations during `supabase db reset`.
+enabled = true
+sql_paths = ["./seed/*.sql"]

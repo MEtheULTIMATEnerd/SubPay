@@ -34,9 +34,9 @@ Database: Supabase PostgreSQL, with pgvector for embeddings. Migrations live in
 
 | Table | Purpose | Owner | State |
 |---|---|---|---|
-| `organisations` | Subcontractor business. The tenant boundary. | Platform | Planned |
-| `profiles` | Application profile for an auth user, with organisation and role | Platform | Planned |
-| `projects` | Construction project workspace | Platform | Planned |
+| `organisations` | Subcontractor business. The tenant boundary. | Platform | Live |
+| `profiles` | Application profile for an auth user, with organisation and role | Platform | Live |
+| `projects` | Construction project workspace | Platform | Live |
 | `contracts` | Uploaded contract and processing metadata | Kinori | Planned |
 | `contract_items` | Structured contractual / claim line item | Kinori | Planned |
 | `evidence` | Photo, document, docket, message or other supporting record | Kinori | Planned |
@@ -47,8 +47,19 @@ Database: Supabase PostgreSQL, with pgvector for embeddings. Migrations live in
 | `notifications` | User-facing reminder or action item | Rehan | Planned |
 | `audit_events` | Record of important workflow actions | Rehan | Planned |
 
-"Planned" means the shape is agreed here but the migration has not been written.
-The web prototype keeps the same shapes in `apps/web/lib/types.ts`.
+"Live" means a migration in `supabase/migrations/` creates it. "Planned" means
+the shape is agreed here but the migration has not been written. The web
+prototype keeps the same shapes in `apps/web/lib/types.ts`.
+
+Migrations so far:
+
+| File | Creates |
+|---|---|
+| `20261004090000_platform_foundation.sql` | `organisations`, `profiles`, `projects`, the helper functions in section 3, the sign-up trigger, privileges and RLS policies |
+
+pgvector is not enabled yet. The first migration that needs it (Arya's
+embedding tables) should start with
+`create extension if not exists vector with schema extensions;`.
 
 ## 3. Row Level Security
 
@@ -59,7 +70,9 @@ Shared helper functions, created by the platform migration, for everyone's polic
 | Function | Returns | Use |
 |---|---|---|
 | `public.current_organisation_id()` | `uuid` | The organisation of the signed-in user (`auth.uid()`), or `null` |
+| `public.current_profile_role()` | `text` | `owner` or `member` for the signed-in user, or `null` |
 | `public.can_access_project(project_id uuid)` | `boolean` | True when the project belongs to the signed-in user's organisation |
+| `public.set_updated_at()` | trigger | Attach as a `before update` trigger to keep `updated_at` current |
 
 Policy patterns:
 
@@ -79,7 +92,33 @@ using (exists (
 ```
 
 Write policies (`insert`, `update`) need a matching `with check` so a row
-cannot be moved into another organisation.
+cannot be moved into another organisation. Wrap helper calls in `(select ...)`
+inside policies, e.g. `(select public.current_organisation_id())`, so Postgres
+evaluates them once per query instead of once per row.
+
+### Privileges
+
+RLS decides which rows. Grants decide which operations and columns. Every
+migration sets both, explicitly, and does not rely on Supabase's default grants:
+
+```sql
+revoke all on public.<table> from anon, authenticated;
+grant select on public.<table> to authenticated;
+grant insert (<client-writable columns>) on public.<table> to authenticated;
+grant update (<client-writable columns>) on public.<table> to authenticated;
+grant all on public.<table> to service_role;
+```
+
+Leave server-set columns (`id`, `organisation_id`, `created_by`, `uploaded_by`,
+timestamps) out of the insert and update grants and give them a default, so a
+client cannot choose them. Signed-out callers (`anon`) get nothing.
+
+### Checking it works
+
+`supabase/tests/platform_foundation.sql` signs up test users in two
+organisations and asserts the rules above, inside a transaction that is rolled
+back. Add a similar file for each new set of tables. See
+[development-guide.md](development-guide.md#6-database).
 
 The service-role key bypasses RLS. Server code that uses it must check project
 ownership itself and must never be reachable from the browser.
@@ -103,7 +142,7 @@ Access: members can read their own organisation. Owners can rename it.
 |---|---|---|
 | `id` | uuid | PK. Same value as `auth.users.id`. FK, `on delete cascade`. |
 | `organisation_id` | uuid | FK to `organisations`. Not null. Indexed. |
-| `email` | text | Copy of the auth email, for display |
+| `email` | text | Copy of the auth email, for display. Kept in step by a trigger. |
 | `full_name` | text | Not null |
 | `role` | text | `owner` or `member` |
 | `created_at` | timestamptz | |
@@ -115,29 +154,33 @@ Because `profiles.id` is the auth user id, every `created_by`, `uploaded_by`,
 Access: a user can read profiles in their own organisation and update their own
 `full_name`. `role` and `organisation_id` cannot be changed by the client.
 
-**Sign-up.** A trigger on `auth.users` creates the organisation and the profile
-in one transaction. The web app passes two values as sign-up metadata:
-`full_name` and `organisation_name`. The person who signs up becomes the
-`owner` of a new organisation.
+**Sign-up.** A trigger on `auth.users` (`handle_new_user()`) creates the
+organisation and the profile in one transaction. The web app passes two values
+as sign-up metadata: `full_name` and `organisation_name`. The person who signs
+up becomes the `owner` of a new organisation. If the metadata is missing, the
+name falls back to the part of the email before `@`. Sign-up metadata comes
+from the client, so it can never place a user in an existing organisation.
 
 ### `projects`
 
 | Column | Type | Notes |
 |---|---|---|
 | `id` | uuid | PK |
-| `organisation_id` | uuid | FK to `organisations`. Not null. Indexed. |
-| `name` | text | Not null |
-| `client_name` | text | Not null. Head contractor / client. |
+| `organisation_id` | uuid | FK to `organisations`. Not null. Indexed. Defaults to the caller's organisation. |
+| `name` | text | Not null. 1 to 200 characters. |
+| `client_name` | text | Not null. Head contractor / client. 1 to 200 characters. |
 | `site_address` | text | Not null, default `''` |
 | `status` | text | `active` or `archived`. Default `active`. |
 | `start_date` | date | Nullable |
 | `end_date` | date | Nullable. Check: not before `start_date`. |
-| `created_by` | uuid | FK to `profiles` |
+| `created_by` | uuid | FK to `profiles`. Defaults to the caller. |
 | `created_at` | timestamptz | |
 | `updated_at` | timestamptz | |
 
 Access: organisation members can read, create and edit their organisation's
-projects. There is no delete policy. Projects are archived.
+projects. Clients can write `name`, `client_name`, `site_address`,
+`start_date`, `end_date`, and on update `status`. There is no delete privilege
+or policy. Projects are archived.
 
 ## 5. Contract and evidence tables (owner: Kinori)
 
