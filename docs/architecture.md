@@ -77,6 +77,27 @@ Rules that every endpoint follows:
 
 Roles for the MVP: `owner` and `member`. No finer-grained permissions.
 
+### In the web app
+
+All authentication code is in `apps/web/lib/auth.ts`. Components call
+`signIn`, `signUp`, `signOut` and `useAuth` from there and never talk to
+Supabase directly.
+
+- The Supabase browser client (`lib/supabase.ts`) is used for authentication only. It keeps the session in the browser and refreshes the token.
+- After sign-in the app loads the profile and organisation from `GET /api/v1/me` (`lib/http.ts` adds the bearer token). If the API cannot be reached, the user is not let into the app.
+- `components/shell.tsx` protects routes: until the saved session has been checked nobody counts as signed in, and signed-out visitors are sent to `/login`. This is a convenience for the user. The real protection is that the API and the database refuse requests without a valid token.
+- A `401` from the API signs the user out.
+
+The web app has two modes, chosen by environment variables at build time:
+
+| Mode | When | Behaviour |
+|---|---|---|
+| Live | `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set | Real Supabase Auth and the FastAPI service |
+| Demo | They are empty | The original prototype: runs entirely in the browser with a simulated sign-in and seeded demo data. No network calls. |
+
+Demo mode keeps the clickable prototype available for demos and for teammates
+whose features still run on mock data.
+
 ## 4. Data access and isolation
 
 Tenant boundary: the **organisation** (the subcontractor business).
@@ -128,7 +149,7 @@ Updated as each piece lands.
 | Database migrations: organisations, profiles, projects, RLS | Done. Not yet applied to a shared Supabase project. |
 | FastAPI foundation and `/api/v1/health` | Done: config, CORS, error format, Supabase token verification, health endpoint |
 | Profile and project endpoints | Done in the API. The web app still uses its mock for them. |
-| Supabase Auth in the web app | Not started. Login is simulated. |
+| Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
 | Contracts, contract items, evidence, storage | Not started. Mock only. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |
@@ -152,9 +173,11 @@ match [database-schema.md](database-schema.md).
 | 5 | Status values are `text` with `check` constraints, not Postgres enums. | Easier to extend in a later migration. |
 | 6 | Human confirmation is workflow state in the application, never set by the AI service. | Keeps "AI suggested" and "human confirmed" clearly separate. |
 | 7 | Responsive web app / PWA, no native mobile app. | In MVP scope. |
+| 8 | The web app keeps a demo mode with no backend. | Demos and mock-based features keep working while the real backend is built feature by feature. |
+| 9 | The browser holds the Supabase session; routes are guarded in the client. | Every page is a client component that loads data with the user's token, so the API and RLS are the enforcement point. |
 
 ## 9. Open questions
 
-- How a second person joins an existing organisation. The schema supports `member`, but there is no invite screen in the MVP. For now members are added through seed data.
+- How a second person joins an existing organisation. The schema supports `member`, but there is no invite screen in the MVP. For now members are added through seed data. In live mode the profile page lists only the signed-in user, because there is no members endpoint yet.
 - Which model provider the AI service uses, and what data controls apply. Owner: Arya.
 - Whether shared TypeScript types are generated from the API's OpenAPI schema into `packages/contracts`.

@@ -4,13 +4,12 @@
 // ponytail: synchronous localStorage calls; make these fetch() wrappers when FastAPI lands.
 import { commit, getDb, resetDb } from "./store";
 import * as ai from "./ai";
+import { ApiError } from "./errors";
 import type {
   Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType,
 } from "./types";
 
-export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
+export { ApiError };
 
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -159,6 +158,8 @@ export function readiness(d: Db, claimId: string) {
 export type Readiness = ReturnType<typeof readiness>;
 
 // ---------- F01 auth ----------
+// Demo mode only. With Supabase configured, lib/auth.ts uses Supabase Auth and
+// GET/PATCH /api/v1/me instead. UI code should import from lib/auth.ts.
 export function signIn(email: string, password: string) {
   const p = getDb().profiles.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
   // ponytail: demo accepts any non-empty password; Supabase Auth owns credentials for real.

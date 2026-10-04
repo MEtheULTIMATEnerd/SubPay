@@ -32,6 +32,8 @@ npm run dev        # http://localhost:3000
 
 Click **Continue as demo user** (Ollie Reid, Kearney Formwork Pty Ltd). Any password works for seeded accounts. Data is saved in your browser's localStorage. To start over, go to **Profile & settings → Reset demo data**.
 
+That is **demo mode**, the default. To use real Supabase sign-in and the API instead (**live mode**), copy `apps/web/.env.example` to `apps/web/.env.local`, fill it in, and follow [docs/development-guide.md](docs/development-guide.md).
+
 Checks: `npm test` (Vitest), `npm run typecheck`, `npm run lint`, `npm run build`.
 
 ## Demo script (Hume St Tower, Claim #7)
@@ -68,7 +70,7 @@ apps/web/
 | Prototype | Replace with | Owner |
 |---|---|---|
 | `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
-| `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI) | Jaden |
+| `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
 | other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints | Kinori / Rehan |
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
 | `thumbnail` previews / file metadata | Supabase Storage with signed URLs | Kinori |
@@ -79,5 +81,5 @@ Pages only call `lib/api.ts`, so the swap doesn't touch the UI.
 
 - Uploaded files are not stored. Only their metadata is kept, plus a small preview for images.
 - The mock AI uses keyword overlap. Its confidence values are placeholders, not calibrated scores.
-- Auth is simulated, so no passwords are stored. "Organisation isolation" is enforced in `lib/api.ts`, which is where RLS will sit.
+- In demo mode auth is simulated, so no passwords are stored. "Organisation isolation" for mock data is enforced in `lib/api.ts`. In live mode Supabase Auth and database RLS do this for real.
 - "Evidence support coverage" is the share of claimed value backed by strong, human-confirmed evidence. It is not a measure of claim validity or legal entitlement.

@@ -1,8 +1,9 @@
 "use client";
 import { useState } from "react";
 import { useData } from "@/lib/store";
-import { read, resetDemo, setAiAvailable, updateProfile } from "@/lib/api";
-import { Dialog, Field, Page, PageHeader } from "@/components/ui";
+import { read, setAiAvailable } from "@/lib/api";
+import { resetDemoData, updateProfileName } from "@/lib/auth";
+import { Dialog, ErrorState, Field, Page, PageHeader } from "@/components/ui";
 
 export default function ProfilePage() {
   const db = useData();
@@ -11,7 +12,23 @@ export default function ProfilePage() {
   const members = db.profiles.filter((p) => p.organisation_id === org.id);
   const [name, setName] = useState(user.full_name);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   const [resetting, setResetting] = useState(false);
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSaving(true);
+    try {
+      await updateProfileName(name);
+      setSaved(true);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Page>
@@ -19,12 +36,13 @@ export default function ProfilePage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="card p-6">
           <p className="mb-4 font-semibold">Your profile</p>
-          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); updateProfile(name); setSaved(true); }}>
+          <form className="space-y-4" onSubmit={save}>
+            {error && <ErrorState title={error} />}
             <Field label="Full name"><input className="input" required value={name} onChange={(e) => { setName(e.target.value); setSaved(false); }} /></Field>
             <Field label="Email"><input className="input bg-surface" value={user.email} disabled /></Field>
             <div className="flex items-center justify-end gap-3">
               {saved && <span className="text-sm text-brand-dark">Saved</span>}
-              <button className="btn-dark">Save</button>
+              <button className="btn-dark" disabled={saving}>{saving ? "Saving…" : "Save"}</button>
             </div>
           </form>
         </section>
@@ -58,7 +76,7 @@ export default function ProfilePage() {
         <p className="text-sm text-muted">This restores the Hume St Tower demo and discards everything you&apos;ve added in this browser.</p>
         <div className="mt-6 flex justify-end gap-2">
           <button className="btn-outline" onClick={() => setResetting(false)}>Cancel</button>
-          <button className="btn-dark" onClick={() => { resetDemo(); setResetting(false); }}>Reset</button>
+          <button className="btn-dark" onClick={() => { resetDemoData(); setResetting(false); }}>Reset</button>
         </div>
       </Dialog>
     </Page>

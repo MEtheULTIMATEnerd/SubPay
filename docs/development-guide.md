@@ -38,9 +38,31 @@ npm install
 npm run dev          # http://localhost:3000
 ```
 
-Today the web app runs entirely in the browser on mock data. Choose
-**Continue as demo user** on the login page. Data is saved in `localStorage`.
-To start over, go to **Profile & settings → Reset demo data**.
+**Demo mode (default).** With no `.env.local`, the web app runs entirely in
+the browser on mock data. Choose **Continue as demo user** on the login page.
+Data is saved in `localStorage`. To start over, go to **Profile & settings →
+Reset demo data**.
+
+**Live mode.** Real sign-up and sign-in through Supabase, with the profile
+loaded from the API:
+
+```bash
+cd apps/web
+cp .env.example .env.local      # then fill in the Supabase URL and anon key
+npm run dev
+```
+
+Live mode also needs the API running (section 4) and the migrations applied to
+the Supabase project (section 6). Restart `npm run dev` after changing
+`.env.local`.
+
+In the Supabase dashboard, under Authentication:
+
+- URL Configuration: set the Site URL to `http://localhost:3000` for local development.
+- Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing.
+
+Only sign-in and the profile are live so far. Projects, contracts, evidence and
+claims still use mock data in the browser, in both modes.
 
 ## 4. Run the API
 
@@ -65,13 +87,13 @@ has the foundation only. Feature endpoints arrive with each workstream.
 Real values go in untracked `.env` files. Only `.env.example` files, with
 placeholder values, are committed. Never commit a real key.
 
-**Web app (`apps/web/.env.local`) (coming)**
+**Web app (`apps/web/.env.local`)**, template in `apps/web/.env.example`
 
 | Variable | Purpose |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (anon / publishable) key. Safe for the browser. |
-| `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI service, e.g. `http://localhost:8000` |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. Empty means demo mode. |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Public (anon / publishable) key. Safe for the browser. Empty means demo mode. |
+| `NEXT_PUBLIC_API_URL` | Base URL of the FastAPI service. Defaults to `http://localhost:8000`. |
 
 **API (`services/api/.env`)**, template in `services/api/.env.example`
 

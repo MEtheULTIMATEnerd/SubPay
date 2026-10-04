@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useDb } from "@/lib/store";
-import { read, signOut, setNotification, markAllRead } from "@/lib/api";
+import { read, setNotification, markAllRead } from "@/lib/api";
+import { initAuth, signOut, useAuth } from "@/lib/auth";
 import type { Db } from "@/lib/types";
 import { Icon, Loading, Logo, cx, fmtDateTime } from "./ui";
 
@@ -12,21 +13,26 @@ const PUBLIC = ["/login", "/signup"];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const db = useDb();
+  const auth = useAuth();
   const path = usePathname();
   const router = useRouter();
   const isPublic = PUBLIC.includes(path);
-  const user = db ? read.me(db) : null;
+  // Until the saved session has been checked, nobody counts as signed in.
+  const ready = Boolean(db) && auth.ready;
+  const user = db && auth.ready ? read.me(db) : null;
+
+  useEffect(() => initAuth(), []);
 
   useEffect(() => {
-    if (!db) return;
+    if (!ready) return;
     if (!user && !isPublic) router.replace(`/login?next=${encodeURIComponent(path)}`);
     if (user && isPublic) {
       const next = new URLSearchParams(window.location.search).get("next");
       router.replace(next?.startsWith("/") && !next.startsWith("//") ? next : "/dashboard");
     }
-  }, [db, user, isPublic, path, router]);
+  }, [ready, user, isPublic, path, router]);
 
-  if (!db || (!user && !isPublic) || (user && isPublic)) return <Loading />;
+  if (!db || !ready || (!user && !isPublic) || (user && isPublic)) return <Loading />;
   if (isPublic) return <>{children}</>;
 
   return (
@@ -80,7 +86,7 @@ function TopBar({ db }: { db: Db }) {
                   <p className="mt-1 text-xs text-muted">{org.name} · {user.role}</p>
                 </div>
                 <Link href="/profile" className="block px-4 py-2.5 text-sm hover:bg-surface">Profile & settings</Link>
-                <button onClick={signOut} className="block w-full px-4 py-2.5 text-left text-sm hover:bg-surface">Sign out</button>
+                <button onClick={() => void signOut()} className="block w-full px-4 py-2.5 text-left text-sm hover:bg-surface">Sign out</button>
               </div>
             )}
           </div>
