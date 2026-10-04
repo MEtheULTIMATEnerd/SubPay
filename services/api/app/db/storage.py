@@ -29,6 +29,8 @@ class FileStorage(Protocol):
         self, bucket: str, path: str, *, expires_in: int, download_as: str | None = None
     ) -> str | None: ...
 
+    def signed_urls(self, bucket: str, paths: list[str], *, expires_in: int) -> dict[str, str]: ...
+
 
 class SupabaseStorage:
     def __init__(
@@ -80,6 +82,23 @@ class SupabaseStorage:
         if download_as:
             url += f"{'&' if '?' in url else '?'}download={quote(download_as)}"
         return url
+
+    def signed_urls(self, bucket: str, paths: list[str], *, expires_in: int) -> dict[str, str]:
+        """Temporary links for several files in one request, keyed by path.
+        Files the caller may not read are simply left out."""
+        if not paths:
+            return {}
+        response = self._request(
+            "POST", f"object/sign/{bucket}", json={"expiresIn": expires_in, "paths": paths}
+        )
+        if not response.is_success:
+            raise _translate_error("sign", bucket, response)
+        links: dict[str, str] = {}
+        for entry in response.json():
+            signed = entry.get("signedURL") or entry.get("signedUrl")
+            if signed and not entry.get("error"):
+                links[entry["path"]] = f"{self._storage_url}/{signed.lstrip('/')}"
+        return links
 
     def _request(self, method: str, path: str, **kwargs) -> httpx2.Response:
         if not self._storage_url or not self._anon_key:

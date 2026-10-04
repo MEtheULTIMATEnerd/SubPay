@@ -16,6 +16,7 @@ import httpx2
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.ai.evidence import EvidenceProcessor, HttpEvidenceProcessor, MockEvidenceProcessor
 from app.ai.extraction import ExtractionProvider, HttpExtractionProvider, MockExtractionProvider
 from app.core import errors
 from app.core.config import Settings, get_settings
@@ -28,8 +29,10 @@ from app.core.security import (
 from app.db.storage import FileStorage, SupabaseStorage
 from app.db.supabase import SupabaseRest, build_http_client
 from app.repositories.contracts import ContractRepository, SupabaseContractRepository
+from app.repositories.evidence import EvidenceRepository, SupabaseEvidenceRepository
 from app.repositories.platform import PlatformRepository, SupabasePlatformRepository
 from app.services.contracts import ContractService
+from app.services.evidence import EvidenceService
 
 _bearer = HTTPBearer(
     auto_error=False,
@@ -154,3 +157,35 @@ def get_contract_service(
 
 
 Contracts = Annotated[ContractService, Depends(get_contract_service)]
+
+
+def get_evidence_processor(
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> EvidenceProcessor:
+    """The AI boundary for evidence. "mock" needs no AI service; "http" calls AI_SERVICE_URL."""
+    if settings.ai_evidence_provider == "http":
+        return HttpEvidenceProcessor(http, settings.ai_service_url)
+    return MockEvidenceProcessor()
+
+
+def get_evidence_repository(rest: UserSupabase) -> EvidenceRepository:
+    return SupabaseEvidenceRepository(rest)
+
+
+def get_evidence_service(
+    repository: Annotated[EvidenceRepository, Depends(get_evidence_repository)],
+    storage: UserStorage,
+    processor: Annotated[EvidenceProcessor, Depends(get_evidence_processor)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> EvidenceService:
+    return EvidenceService(
+        repository,
+        storage,
+        processor,
+        signed_url_seconds=settings.signed_url_seconds,
+        preview_url_seconds=settings.preview_url_seconds,
+    )
+
+
+EvidenceLibrary = Annotated[EvidenceService, Depends(get_evidence_service)]

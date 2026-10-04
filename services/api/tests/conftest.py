@@ -16,10 +16,13 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
+from app.ai.evidence import MockEvidenceProcessor
 from app.ai.extraction import MockExtractionProvider
 from app.api.deps import (
     CurrentUser,
     get_contract_repository,
+    get_evidence_processor,
+    get_evidence_repository,
     get_extraction_provider,
     get_file_storage,
     get_platform_repository,
@@ -32,6 +35,7 @@ from app.main import create_app
 from tests.fakes import (
     FakeContractRepository,
     FakeDatabase,
+    FakeEvidenceRepository,
     FakePlatformRepository,
     FakeStorage,
 )
@@ -179,12 +183,19 @@ def extractor() -> MockExtractionProvider:
 
 
 @pytest.fixture
+def processor() -> MockEvidenceProcessor:
+    """The built-in mock evidence AI. Set `processor.available = False` to simulate an outage."""
+    return MockEvidenceProcessor()
+
+
+@pytest.fixture
 def app(
     settings: Settings,
     verifier: TokenVerifier,
     db: FakeDatabase,
     storage: FakeStorage,
     extractor: MockExtractionProvider,
+    processor: MockEvidenceProcessor,
 ) -> FastAPI:
     application = create_app(settings)
     application.include_router(_test_router(), prefix=settings.api_v1_prefix)
@@ -200,6 +211,12 @@ def app(
     application.dependency_overrides[get_contract_repository] = contracts_for_caller
     application.dependency_overrides[get_file_storage] = lambda: storage
     application.dependency_overrides[get_extraction_provider] = lambda: extractor
+
+    def evidence_for_caller(user: CurrentUser) -> FakeEvidenceRepository:
+        return FakeEvidenceRepository(db, user.id)
+
+    application.dependency_overrides[get_evidence_repository] = evidence_for_caller
+    application.dependency_overrides[get_evidence_processor] = lambda: processor
     return application
 
 

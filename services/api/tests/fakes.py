@@ -14,8 +14,10 @@ from uuid import UUID, uuid4
 
 from app.core import errors
 from app.core.errors import ApiError
+from app.repositories.evidence import EvidenceFilters
 from app.repositories.platform import NO_PROFILE_MESSAGE
 from app.schemas.contracts import Contract, ContractItem
+from app.schemas.evidence import Evidence
 from app.schemas.platform import Me, Organisation, Profile, Project, ProjectStatus
 
 
@@ -30,6 +32,7 @@ class FakeDatabase:
         self.projects: dict[UUID, dict[str, Any]] = {}
         self.contracts: dict[UUID, dict[str, Any]] = {}
         self.contract_items: dict[UUID, dict[str, Any]] = {}
+        self.evidence: dict[UUID, dict[str, Any]] = {}
 
     def organisation_of(self, user_id: UUID) -> UUID | None:
         profile = self.profiles.get(user_id)
@@ -268,6 +271,7 @@ class FakeStorage:
     def __init__(self) -> None:
         self.files: dict[tuple[str, str], tuple[bytes, str]] = {}
         self.fail_uploads = False
+        self.batch_sign_calls: list[list[str]] = []
 
     def upload(self, bucket: str, path: str, content: bytes, content_type: str) -> None:
         if self.fail_uploads:
@@ -282,3 +286,101 @@ class FakeStorage:
         if (bucket, path) not in self.files:
             return None
         return f"https://storage.test/{bucket}/{path}?token=signed&expires={expires_in}"
+
+    def signed_urls(self, bucket: str, paths: list[str], *, expires_in: int) -> dict[str, str]:
+        self.batch_sign_calls.append(list(paths))
+        links = {p: self.signed_url(bucket, p, expires_in=expires_in) for p in paths}
+        return {p: url for p, url in links.items() if url}
+
+
+class FakeEvidenceRepository:
+    """Evidence for one caller, limited to their organisation's projects."""
+
+    def __init__(self, db: FakeDatabase, user_id: UUID) -> None:
+        self._db = db
+        self._user_id = user_id
+
+    def _visible(self, evidence_id: UUID) -> dict[str, Any] | None:
+        row = self._db.evidence.get(evidence_id)
+        if row is None or not self._db.can_access_project(self._user_id, row["project_id"]):
+            return None
+        return row
+
+    def project_exists(self, project_id: UUID) -> bool:
+        return self._db.can_access_project(self._user_id, project_id)
+
+    def create(self, values: dict[str, Any]) -> Evidence:
+        project_id = UUID(values["project_id"])
+        if not self._db.can_access_project(self._user_id, project_id):
+            raise errors.forbidden()
+        evidence_id = UUID(values["id"])
+        # What the database trigger evidence_assign_code does:
+        sequence = 1 + max(
+            (
+                r["sequence_number"]
+                for r in self._db.evidence.values()
+                if r["project_id"] == project_id
+            ),
+            default=0,
+        )
+        row = {
+            "storage_path": None,
+            "original_filename": None,
+            "mime_type": None,
+            "size_bytes": None,
+            "evidence_type": "other",
+            "captured_at": _now(),
+            "description": "",
+            "metadata": {},
+            **values,
+            "id": evidence_id,
+            "project_id": project_id,
+            "sequence_number": sequence,
+            "code": f"EV-{sequence:03d}",
+            "uploaded_by": self._user_id,
+            "processing_status": "uploaded",
+            "archived": False,
+            "created_at": _now(),
+            "updated_at": _now(),
+        }
+        self._db.evidence[evidence_id] = row
+        return Evidence.model_validate(row)
+
+    def list_for_project(self, project_id: UUID, filters: EvidenceFilters) -> list[Evidence]:
+        if not self._db.can_access_project(self._user_id, project_id):
+            return []
+        rows = [Evidence.model_validate(r) for r in self._db.evidence.values()]
+        rows = [r for r in rows if r.project_id == project_id]
+        if filters.evidence_type:
+            rows = [r for r in rows if r.evidence_type == filters.evidence_type]
+        if filters.archived is not None:
+            rows = [r for r in rows if r.archived == filters.archived]
+        if filters.captured_from:
+            rows = [r for r in rows if r.captured_at.date() >= filters.captured_from]
+        if filters.captured_to:
+            rows = [r for r in rows if r.captured_at.date() <= filters.captured_to]
+        if filters.q and filters.q.strip():
+            needle = filters.q.strip().lower()
+            rows = [
+                r
+                for r in rows
+                if needle
+                in " ".join([r.title, r.description, r.code, r.original_filename or ""]).lower()
+            ]
+        rows.sort(key=lambda r: r.captured_at, reverse=True)
+        return rows[filters.offset : filters.offset + filters.limit]
+
+    def get(self, evidence_id: UUID) -> Evidence | None:
+        row = self._visible(evidence_id)
+        return Evidence.model_validate(row) if row else None
+
+    def update(self, evidence_id: UUID, changes: dict[str, Any]) -> Evidence | None:
+        row = self._visible(evidence_id)
+        if row is None:
+            return None
+        candidate = {**row, **changes}
+        if candidate["storage_path"] is None and not str(candidate["description"]).strip():
+            # The database check constraint evidence_file_or_note_check.
+            raise errors.validation_error("Add a file or a written note", field="description")
+        row.update(changes, updated_at=_now())
+        return Evidence.model_validate(row)

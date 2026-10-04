@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useData } from "@/lib/store";
-import { linkEvidence, read, uploadEvidence } from "@/lib/api";
+import { linkEvidence, read } from "@/lib/api";
 import { matchEvidence } from "@/lib/ai";
+import { uploadEvidence } from "@/lib/evidence";
 import { thumbnail } from "@/lib/thumbnail";
 import { ErrorState, Icon, cx } from "@/components/ui";
 
@@ -27,6 +28,7 @@ export default function CapturePage() {
   const [showAll, setShowAll] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Live suggestions from the (mock) AI as the worker types what the photo shows.
   const suggested = db.settings.ai_available && note.trim()
@@ -46,9 +48,12 @@ export default function CapturePage() {
     setThumb(await thumbnail(f));
   }
 
-  function add() {
+  async function add() {
+    if (saving) return;
+    setError("");
+    setSaving(true);
     try {
-      const id = uploadEvidence(projectId, {
+      const id = await uploadEvidence(projectId, {
         file, title: "Site photo", description: note, evidence_type: "photo", captured_at: takenAt.toISOString(),
         location: location || null, thumbnail: thumb, source: "mobile_upload",
       }, { autoMatch: !choice });
@@ -56,6 +61,8 @@ export default function CapturePage() {
       setDone(true);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -137,8 +144,8 @@ export default function CapturePage() {
             {items.length === 0 && <p className="mt-3 text-sm text-muted">No confirmed contract items yet. <Link href={`/projects/${projectId}/contracts`} className="link">Upload a contract</Link></p>}
 
             {error && <div className="mt-4"><ErrorState title={error} /></div>}
-            <button className="btn-dark mt-6 w-full py-5 text-lg" disabled={!file && !note.trim()} onClick={add}>
-              {choice ? "Add to claim" : "Save, let SubPay suggest"}
+            <button className="btn-dark mt-6 w-full py-5 text-lg" disabled={saving || (!file && !note.trim())} onClick={add}>
+              {saving ? "Saving…" : choice ? "Add to claim" : "Save, let SubPay suggest"}
             </button>
             <p className="mt-4 text-center text-sm text-muted">Three taps. Works in gloves, in direct sun.</p>
           </>

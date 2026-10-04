@@ -73,15 +73,16 @@ apps/web/
 | `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
 | project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
 | contract and contract item functions in `lib/api.ts` | `/api/v1/.../contracts` and `/api/v1/contract-items`. **Done** in live mode: see `lib/contracts.ts`. | Kinori |
-| other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Kinori / Rehan |
+| evidence functions in `lib/api.ts` (upload, edit, archive) | `/api/v1/.../evidence`. **Done** in live mode: see `lib/evidence.ts`. | Kinori |
+| other `lib/api.ts` functions (matches, claims, audit, notifications) | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Rehan / Jaden |
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
-| `thumbnail` previews / file metadata | Supabase Storage with signed URLs | Kinori |
+| `thumbnail` previews / file metadata | Supabase Storage with signed URLs. **Done** in live mode: see `previewOf` in `lib/evidence.ts`. | Kinori |
 
-Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/projects.ts`), so the swap is made one feature at a time.
+Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/projects.ts`, `lib/contracts.ts`, `lib/evidence.ts`), so the swap is made one feature at a time.
 
 ## Prototype limits (deliberate)
 
-- Uploaded files are not stored. Only their metadata is kept, plus a small preview for images.
+- In demo mode uploaded files are not stored. Only their metadata is kept, plus a small preview for images. In live mode contracts and evidence files are stored in private Supabase Storage buckets.
 - The mock AI uses keyword overlap. Its confidence values are placeholders, not calibrated scores.
 - In demo mode auth is simulated, so no passwords are stored. "Organisation isolation" for mock data is enforced in `lib/api.ts`. In live mode Supabase Auth and database RLS do this for real.
 - "Evidence support coverage" is the share of claimed value backed by strong, human-confirmed evidence. It is not a measure of claim validity or legal entitlement.

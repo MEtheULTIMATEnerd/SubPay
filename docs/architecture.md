@@ -93,6 +93,13 @@ and items are loaded when the project is opened (`lib/project-data.ts`), and
 the screens wait for that first load. After an upload the app checks the
 contract every 1.5 seconds until extraction is ready or has failed.
 
+Evidence follows it in `apps/web/lib/evidence.ts`, loaded with the contracts
+when a project is opened. Photo previews are signed links that expire after an
+hour, so they are kept in memory only and never written to the browser's
+storage; if one fails to load the app fetches fresh links. Matching evidence
+to contract items is still mock data: in live mode it runs in the browser once
+the API reports the evidence `ready`.
+
 Projects follow the same shape in `apps/web/lib/projects.ts`: `createProject`,
 `updateProject`, `setProjectStatus` and `refreshProjects`. In live mode the API
 is the source of truth and the local store holds a copy of the organisation's
@@ -170,7 +177,7 @@ Updated as each piece lands.
 | Profile and project endpoints | Done. The web app uses them in live mode. |
 | Supabase Auth in the web app | Done: sign up, sign in, sign out, session persistence, protected routes, profile from `/api/v1/me`. Demo mode keeps the simulated login. |
 | Contracts and contract items | Done. Upload, list, download link, extraction (mock provider), retry, and human review (edit, confirm, reject, reopen). The contract and item review screens use the API in live mode. |
-| Evidence | Database tables and storage bucket done. API and web wiring not started. |
+| Evidence | Done. Upload (file or written note), library with search and filters, signed previews and downloads, edit, archive and restore, AI processing status and retry. The evidence library and site capture screens use the API in live mode. |
 | Matches, claims, readiness, export, audit, notifications | Not started. Mock only. |
 | AI service | Not started. Mock only. |
 

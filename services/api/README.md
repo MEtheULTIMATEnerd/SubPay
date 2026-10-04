@@ -47,6 +47,7 @@ app/
       me.py          GET, PATCH /api/v1/me
       projects.py    /api/v1/projects
       contracts.py   Contract upload, list, get, extraction retry, items
+      evidence.py    Evidence upload, library, get, edit, archive, reprocess
   schemas/           Request and response shapes (Pydantic)
   db/
     supabase.py      SupabaseRest: data access as the signed-in user
@@ -55,8 +56,10 @@ app/
   services/          Workflows that combine repositories, storage and AI
     uploads.py       File checks shared by every upload
     contracts.py     Upload, store, extract, save items
+    evidence.py      Upload, store, list with previews, edit, send for AI processing
   ai/
     extraction.py    The AI boundary: ExtractionProvider, mock and HTTP providers
+    evidence.py      The AI boundary for evidence: EvidenceProcessor, mock and HTTP
 tests/
   fakes.py           In-memory repositories and storage used by the endpoint tests
   files.py           Small valid sample files for upload tests

@@ -3,7 +3,9 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { useData } from "@/lib/store";
-import { read, runMatching, setEvidenceArchived, setVariationStatus, updateEvidence, uploadEvidence } from "@/lib/api";
+import { read, setVariationStatus } from "@/lib/api";
+import { LIVE } from "@/lib/env";
+import { getEvidenceDownloadUrl, previewFailed, previewOf, rerunMatching, setEvidenceArchived, updateEvidence, uploadEvidence } from "@/lib/evidence";
 import { localDateTime, thumbnail, typeFromMime } from "@/lib/thumbnail";
 import type { Db, Evidence, EvidenceType } from "@/lib/types";
 import {
@@ -12,6 +14,7 @@ import {
 
 const TYPES: EvidenceType[] = ["photo", "document", "docket", "message", "other"];
 const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+const ACCEPT = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,.pdf,.docx,.xlsx,.txt,.csv";
 
 export default function EvidencePage() {
   const db = useData();
@@ -35,7 +38,7 @@ export default function EvidencePage() {
     .filter((e) => !type || e.evidence_type === type)
     .filter((e) => !from || e.captured_at.slice(0, 10) >= from)
     .filter((e) => !to || e.captured_at.slice(0, 10) <= to)
-    .filter((e) => `${e.code} ${e.title} ${e.description} ${e.metadata.location ?? ""}`.toLowerCase().includes(q.toLowerCase()))
+    .filter((e) => `${e.code} ${e.title} ${e.description} ${e.original_filename ?? ""} ${e.metadata.location ?? ""}`.toLowerCase().includes(q.trim().toLowerCase()))
     .sort((a, b) => b.captured_at.localeCompare(a.captured_at));
   const open = all.find((e) => e.id === openId);
 
@@ -48,7 +51,7 @@ export default function EvidencePage() {
           <>
             <Link href={`/projects/${projectId}/evidence/capture`} className="btn-dark"><Icon.camera className="h-4 w-4" />Capture on site</Link>
             <button className="btn-primary" onClick={() => picker.current?.click()}><Icon.upload className="h-4 w-4" />Upload</button>
-            <input ref={picker} type="file" multiple hidden onChange={(e) => { if (e.target.files?.length) setPending([...e.target.files]); e.target.value = ""; }} />
+            <input ref={picker} type="file" multiple hidden accept={ACCEPT} onChange={(e) => { if (e.target.files?.length) setPending([...e.target.files]); e.target.value = ""; }} />
           </>
         }
       />
@@ -151,9 +154,10 @@ export default function EvidencePage() {
 }
 
 function Preview({ e, className }: { e: Evidence; className?: string }) {
-  return e.thumbnail ? (
+  const src = previewOf(e);
+  return src ? (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={e.thumbnail} alt={e.title} className={cx("w-full object-cover", className)} />
+    <img src={src} alt={e.title} className={cx("w-full object-cover", className)} onError={() => previewFailed(e.project_id)} />
   ) : (
     <div className={cx("flex w-full items-center justify-center bg-surface-2 text-sage", className)}>
       <EvidenceIcon type={e.evidence_type} className="h-12 w-12" />
@@ -191,13 +195,15 @@ function UploadForm({ files, projectId, onDone }: { files: File[]; projectId: st
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
+    setError("");
     setBusy(true);
     try {
+      if (files.length === 1 && Number.isNaN(new Date(f.captured_at).getTime())) throw new Error("Enter the date and time this was captured");
       for (const file of files) {
-        uploadEvidence(projectId, {
+        await uploadEvidence(projectId, {
           file, title: files.length === 1 ? f.title : file.name, description: f.description,
           evidence_type: files.length === 1 ? f.evidence_type : (typeFromMime(file.type) as EvidenceType),
-          captured_at: new Date(files.length === 1 ? f.captured_at : file.lastModified).toISOString(),
+          captured_at: new Date(files.length === 1 ? f.captured_at : file.lastModified || Date.now()).toISOString(),
           location: f.location || null, thumbnail: await thumbnail(file),
         });
       }
@@ -242,13 +248,38 @@ function UploadForm({ files, projectId, onDone }: { files: File[]; projectId: st
 
 function EvidenceDetail({ db, e }: { db: Db; e: Evidence }) {
   const [edit, setEdit] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const [f, setF] = useState({ title: e.title, description: e.description, evidence_type: e.evidence_type, location: e.metadata.location ?? "" });
+
+  /** Run one action; show what went wrong instead of failing silently. */
+  async function run(action: () => Promise<void> | void) {
+    setError("");
+    setBusy(true);
+    try {
+      await action();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const save = () => run(async () => {
+    await updateEvidence(e.id, { ...f, location: f.location.trim() || null });
+    setEdit(false);
+  });
+  const openFile = () => run(async () => {
+    const url = await getEvidenceDownloadUrl(e.id);
+    if (!url) throw new Error("The file is not available right now.");
+    window.location.assign(url); // a short-lived link that downloads the file
+  });
   const items = read.projectItems(db, e.project_id);
   const m = read.matches(db, e.project_id).filter((x) => x.evidence_id === e.id);
 
   return (
     <div className="space-y-5">
       <Preview e={e} className="h-56 rounded-xl" />
+      {error && <ErrorState title={error} />}
       {edit ? (
         <div className="space-y-3">
           <Field label="Title"><input className="input" value={f.title} onChange={(x) => setF({ ...f, title: x.target.value })} /></Field>
@@ -262,8 +293,8 @@ function EvidenceDetail({ db, e }: { db: Db; e: Evidence }) {
             <Field label="Location"><input className="input" value={f.location} onChange={(x) => setF({ ...f, location: x.target.value })} /></Field>
           </div>
           <div className="flex justify-end gap-2">
-            <button className="btn-outline" onClick={() => setEdit(false)}>Cancel</button>
-            <button className="btn-primary" onClick={() => { updateEvidence(e.id, { ...f, location: f.location || null }); setEdit(false); }}>Save</button>
+            <button className="btn-outline" disabled={busy} onClick={() => { setError(""); setEdit(false); }}>Cancel</button>
+            <button className="btn-primary" disabled={busy} onClick={save}>{busy ? "Saving…" : "Save"}</button>
           </div>
         </div>
       ) : (
@@ -272,8 +303,8 @@ function EvidenceDetail({ db, e }: { db: Db; e: Evidence }) {
           <dt className="text-muted">Type</dt><dd>{cap(e.evidence_type)}</dd>
           <dt className="text-muted">Captured</dt><dd>{fmtDateTime(e.captured_at)}</dd>
           <dt className="text-muted">Location</dt><dd>{e.metadata.location ?? "—"}</dd>
-          <dt className="text-muted">Source</dt><dd>{e.metadata.author ?? read.actor(db, e.uploaded_by)} · {e.metadata.source.replace("_", " ")}</dd>
-          <dt className="text-muted">File</dt><dd className="break-all">{e.original_filename}</dd>
+          <dt className="text-muted">Source</dt><dd>{e.metadata.author ?? read.actor(db, e.uploaded_by)} · {(e.metadata.source ?? "upload").replace("_", " ")}</dd>
+          <dt className="text-muted">File</dt><dd className="break-all">{e.original_filename ?? "Written note, no file"}</dd>
           <dt className="text-muted">AI status</dt><dd><ProcessingBadge status={e.processing_status} /></dd>
         </dl>
       )}
@@ -300,9 +331,10 @@ function EvidenceDetail({ db, e }: { db: Db; e: Evidence }) {
 
       {!edit && (
         <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
-          {db.settings.ai_available && <button className="btn-outline btn-sm" onClick={() => runMatching(e.id)}>Re-run AI matching</button>}
-          <button className="btn-outline btn-sm" onClick={() => setEdit(true)}>Edit details</button>
-          <button className="btn-outline btn-sm" onClick={() => setEvidenceArchived(e.id, !e.archived)}>{e.archived ? "Restore" : "Archive"}</button>
+          {LIVE && e.storage_path && <button className="btn-outline btn-sm" disabled={busy} onClick={openFile}>Download file</button>}
+          {db.settings.ai_available && <button className="btn-outline btn-sm" disabled={busy || e.processing_status === "processing"} onClick={() => run(() => rerunMatching(e.id))}>Re-run AI matching</button>}
+          <button className="btn-outline btn-sm" disabled={busy} onClick={() => setEdit(true)}>Edit details</button>
+          <button className="btn-outline btn-sm" disabled={busy} onClick={() => run(() => setEvidenceArchived(e.id, !e.archived))}>{e.archived ? "Restore" : "Archive"}</button>
         </div>
       )}
     </div>

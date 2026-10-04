@@ -173,7 +173,7 @@ function PrintDocument({ db, r }: { db: Db; r: Readiness }) {
 
       <h2 className="mt-6 text-xl font-bold">4. Evidence annexure</h2>
       <ol className="mt-2 text-[9pt]">
-        {annex.map((a) => <li key={a.ref}><strong>{a.ref}</strong> — {a.ev.code} {a.ev.title}, {a.ev.evidence_type}, {fmtDateTime(a.ev.captured_at)}{a.ev.metadata.location ? `, ${a.ev.metadata.location}` : ""} · {a.ev.storage_path}</li>)}
+        {annex.map((a) => <li key={a.ref}><strong>{a.ref}</strong> — {a.ev.code} {a.ev.title}, {a.ev.evidence_type}, {fmtDateTime(a.ev.captured_at)}{a.ev.metadata.location ? `, ${a.ev.metadata.location}` : ""}{a.ev.storage_path ? ` · ${a.ev.storage_path}` : ""}</li>)}
       </ol>
 
       <h2 className="mt-6 text-xl font-bold">5. Missing or weak evidence</h2>

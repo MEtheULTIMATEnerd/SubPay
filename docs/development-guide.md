@@ -61,8 +61,9 @@ In the Supabase dashboard, under Authentication:
 - URL Configuration: set the Site URL to `http://localhost:3000` for local development.
 - Sign-in providers > Email: with "Confirm email" on, a new user must click the emailed link before signing in, and the sign-up page says so. Turn it off for quicker local testing.
 
-Sign-in, the profile, projects, contracts and contract item review are live.
-Evidence and claims still use mock data in the browser, in both modes. A new live account starts
+Sign-in, the profile, projects, contracts, contract item review and evidence
+are live. Evidence matching, claims, the audit trail and notifications still
+use mock data in the browser, in both modes. A new live account starts
 with no projects, because the seeded demo project belongs to the demo
 organisation.
 
@@ -108,6 +109,7 @@ placeholder values, are committed. Never commit a real key.
 | `CORS_ORIGINS` | Allowed web origins, e.g. `http://localhost:3000` |
 | `AI_SERVICE_URL` | Base URL of the AI service |
 | `AI_EXTRACTION_PROVIDER` | `mock` (default) uses the built-in deterministic extraction. `http` calls the AI service. |
+| `AI_EVIDENCE_PROVIDER` | `mock` (default) marks evidence ready without an AI service. `http` calls the AI service for each record. |
 
 Anything prefixed `NEXT_PUBLIC_` is shipped to the browser. The service-role
 key must never have that prefix and must never appear under `apps/web`.

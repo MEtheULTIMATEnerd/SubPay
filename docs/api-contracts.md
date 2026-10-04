@@ -144,10 +144,11 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 | POST | `/api/v1/contract-items/{item_id}/confirm` | Human confirms an item | Live |
 | POST | `/api/v1/contract-items/{item_id}/reject` | Human rejects an item | Live |
 | POST | `/api/v1/contract-items/{item_id}/reopen` | Return an item to draft | Live |
-| POST | `/api/v1/projects/{project_id}/evidence` | Upload evidence (file and/or written note) with metadata | Mock |
-| GET | `/api/v1/projects/{project_id}/evidence` | List evidence. Filters: `q`, `evidence_type`, `from`, `to`, `archived` | Mock |
-| GET | `/api/v1/evidence/{evidence_id}` | Get one evidence record, including a signed URL | Mock |
-| PATCH | `/api/v1/evidence/{evidence_id}` | Edit description, type, captured date, metadata, archived | Mock |
+| POST | `/api/v1/projects/{project_id}/evidence` | Add evidence (a file, a written note, or both) with its details. Returns `201`. | Live |
+| GET | `/api/v1/projects/{project_id}/evidence` | List and search evidence. Filters: `q`, `evidence_type`, `from`, `to`, `archived`, `limit`, `offset` | Live |
+| GET | `/api/v1/evidence/{evidence_id}` | Get one evidence record, including a signed download URL | Live |
+| PATCH | `/api/v1/evidence/{evidence_id}` | Edit title, description, type, captured date or metadata; archive or restore | Live |
+| POST | `/api/v1/evidence/{evidence_id}/process` | Send evidence for AI processing again after a failure | Live |
 
 ### Claim experience (F10 to F15, F17 to F19) — owner: Rehan
 
@@ -171,7 +172,7 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 | Method | Path | Purpose | State |
 |---|---|---|---|
 | POST | `/ai/v1/contracts/{contract_id}/extract` | Contract to structured line items | Mock (`apps/web/lib/ai.ts`) |
-| POST | `/ai/v1/evidence/{evidence_id}/understand` | OCR / vision / text to structured signals | Planned |
+| POST | `/ai/v1/evidence/{evidence_id}/understand` | OCR / vision / text to structured signals | Planned. The API already calls it when `AI_EVIDENCE_PROVIDER=http`. |
 | POST | `/ai/v1/matches` | Evidence to contract item suggestions | Mock |
 | POST | `/ai/v1/completeness` | Strong / partial / weak / missing per item | Mock |
 | POST | `/ai/v1/variations/detect` | Flag potential variations | Mock |
@@ -342,11 +343,98 @@ Editing does not change the review status.
 and return the updated ContractItem. `reviewed_by` is set to the caller on
 confirm and reject, and cleared on reopen.
 
+### Adding evidence
+
+`POST /api/v1/projects/{project_id}/evidence` takes `multipart/form-data`:
+
+| Part | Required | Rules |
+|---|---|---|
+| `file` | No | A photo (JPEG, PNG, WebP, HEIC) or a PDF, Word (`.docx`), Excel (`.xlsx`), text or CSV file, up to 50 MB |
+| `title` | No | Up to 200 characters. Defaults to the filename, or `Note` when there is no file. |
+| `description` | Only when there is no file | Up to 5000 characters |
+| `evidence_type` | No | `photo`, `document`, `docket`, `message` or `other`. Defaults to `photo` for an image, `document` for any other file, `message` for a note. |
+| `captured_at` | No | When it was captured on site. ISO 8601 **with a timezone**, e.g. `2026-09-14T11:30:00+10:00`. Defaults to now. Stored in UTC. |
+| `metadata` | No | A JSON object as a string, up to 10,000 characters, e.g. `{"location": "Level 3", "source": "mobile_upload", "tags": []}` |
+
+- A record needs a `file`, a non-blank `description`, or both. Otherwise `422`.
+- The file type is judged from the file's contents (and, for text and CSV, its extension), not from the `Content-Type` the browser sends. Anything else is `415 unsupported_media_type`. Over 50 MB is `413 payload_too_large`. A project that is not the caller's is `404`.
+- The file is stored privately at `evidence/{project_id}/{evidence_id}/original.<ext>`. The uploaded filename is kept for display only and is never used in the path.
+- `code` (`EV-001`, `EV-002`, ...), `sequence_number` and `uploaded_by` are set by the database. Nothing in the request can set them.
+
+The response is the new Evidence with `processing_status: "processing"`. AI
+processing runs after the response is sent. Poll
+`GET /api/v1/evidence/{evidence_id}` until the status is `ready` or `failed`.
+If the AI service is down the evidence is still saved; its status becomes
+`failed` and it can be linked to contract items by hand.
+
+```json
+{
+  "id": "e1d2e3f4-0000-4000-8000-000000000001",
+  "project_id": "5a0d8a0e-2c9b-4a55-8a8e-0a2b9a6c1d22",
+  "sequence_number": 1,
+  "code": "EV-001",
+  "uploaded_by": "7f1f5c58-2a4e-4b43-8a34-3f8a1f0c9b10",
+  "storage_path": "evidence/5a0d8a0e-.../e1d2e3f4-.../original.jpg",
+  "original_filename": "IMG_2041.jpg",
+  "mime_type": "image/jpeg",
+  "size_bytes": 2841120,
+  "evidence_type": "photo",
+  "captured_at": "2026-09-14T01:30:00Z",
+  "title": "Level 3 slab pour",
+  "description": "East side poured, north side formwork in place.",
+  "metadata": { "location": "Level 3 east", "source": "mobile_upload", "tags": [] },
+  "processing_status": "processing",
+  "archived": false,
+  "created_at": "2026-10-04T05:12:00Z",
+  "updated_at": "2026-10-04T05:12:00Z",
+  "preview_url": "https://<project>.supabase.co/storage/v1/object/sign/evidence/...?token=..."
+}
+```
+
+For a written note, `storage_path`, `original_filename`, `mime_type` and
+`size_bytes` are `null`.
+
+`preview_url` is a signed link for showing the image, valid for one hour. It is
+set for JPEG, PNG and WebP files and `null` for everything else. Do not store
+it; ask again for a fresh one.
+
+### The evidence library
+
+`GET /api/v1/projects/{project_id}/evidence` returns `{ "items": [Evidence] }`,
+newest `captured_at` first.
+
+| Query | Meaning |
+|---|---|
+| `q` | Text to find in the title, description, code or filename. Not case-sensitive. What is typed is matched literally. |
+| `evidence_type` | One of the five types |
+| `from`, `to` | Captured on or between these days (`YYYY-MM-DD`, UTC, both inclusive) |
+| `archived` | `true` for archived only, `false` for active only. Leave out for both. |
+| `limit`, `offset` | Paging. `limit` is 1 to 200, default 50. |
+
+`GET /api/v1/evidence/{evidence_id}` returns the same fields plus
+`download_url`: a signed link to the stored file that expires after five
+minutes (`null` for a written note).
+
+`PATCH /api/v1/evidence/{evidence_id}` accepts any of `title`, `description`,
+`evidence_type`, `captured_at`, `metadata` and `archived`. At least one must be
+sent and none may be `null`. `metadata` replaces the whole object. Anything
+else in the body is ignored, so an edit cannot change the stored file, the
+code, the uploader, the project or the processing status. A note cannot be
+edited down to an empty description.
+
+Evidence is never deleted. `{"archived": true}` hides it from the active
+library and `{"archived": false}` restores it. The file is kept either way.
+
+`POST /api/v1/evidence/{evidence_id}/process` sends evidence to the AI service
+again. It returns `409 conflict` when the evidence is already `ready` or is
+still `processing`. Evidence stuck in `processing` for more than ten minutes
+can be retried.
+
 - **Contract**: `processing_status` is `uploaded`, `processing`, `ready` or `failed`. A failed contract carries a user-safe `error` message.
 - **ContractItem**: `review_status` is `draft`, `confirmed` or `rejected`. `extraction_confidence` is the AI's confidence, or `null` for an item a person added. Quantity, unit, rate, amount, conditions, notice requirement and due date are all nullable, because not every contract contains them.
-- **Evidence**: `evidence_type` is `photo`, `document`, `docket`, `message` or `other`. `metadata` is a free-form object, for example `{ "location": null, "source": "mobile_upload", "tags": [] }`.
+- **Evidence**: `evidence_type` is `photo`, `document`, `docket`, `message` or `other`. `processing_status` has the same four values as a contract. `metadata` is a free-form object. The web app writes `location`, `source` (`desktop_upload` or `mobile_upload`), `tags` and `author` (the uploader's name, for display only; `uploaded_by` is the record of who added it).
 
-Upload limits for the MVP: contracts are PDF or DOCX up to 25 MB, evidence files up to 50 MB.
+Upload limits for the MVP: contracts are PDF or DOCX up to 25 MB, evidence files up to 50 MB. The API refuses any request body over 60 MB.
 
 ## 5. Match, claim and audit objects
 
@@ -433,6 +521,35 @@ AI service exists, a deterministic mock answers instead
 (`AI_EXTRACTION_PROVIDER=mock`, the default). Setting
 `AI_EXTRACTION_PROVIDER=http` makes the API call `AI_SERVICE_URL`. Nothing
 else changes.
+
+### Evidence understanding
+
+`POST /ai/v1/evidence/{evidence_id}/understand`. The API sends:
+
+```json
+{
+  "evidence_id": "uuid",
+  "project_id": "uuid",
+  "evidence_type": "photo",
+  "title": "Level 3 slab pour",
+  "description": "East side poured, north side formwork in place.",
+  "captured_at": "2026-09-14T01:30:00Z",
+  "metadata": { "location": "Level 3 east", "source": "mobile_upload", "tags": [] },
+  "original_filename": "IMG_2041.jpg",
+  "mime_type": "image/jpeg",
+  "document_url": "https://<project>.supabase.co/storage/v1/object/sign/evidence/...?token=..."
+}
+```
+
+`document_url` is a signed link that expires after five minutes. It is `null`,
+along with `original_filename` and `mime_type`, for a written note. Any `2xx`
+answer marks the evidence `ready`; the body is not read, because the AI
+service keeps its own results. Anything else, or no answer within the timeout,
+marks it `failed`.
+
+The API side of this boundary is `services/api/app/ai/evidence.py`. With
+`AI_EVIDENCE_PROVIDER=mock` (the default) every record is marked `ready`
+without a call. `AI_EVIDENCE_PROVIDER=http` calls `AI_SERVICE_URL`.
 
 ### Evidence matching
 

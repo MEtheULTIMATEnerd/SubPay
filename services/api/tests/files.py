@@ -22,3 +22,20 @@ def zip_bytes() -> bytes:
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("notes.txt", "hello")
     return buffer.getvalue()
+
+
+# Smallest plausible files of each photo type: the signature is what matters.
+JPEG_BYTES = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 64
+PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+WEBP_BYTES = b"RIFF\x24\x00\x00\x00WEBPVP8 " + b"\x00" * 32
+HEIC_BYTES = b"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + b"\x00" * 32
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def xlsx_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", "<Types/>")
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+    return buffer.getvalue()

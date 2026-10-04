@@ -78,20 +78,32 @@ export interface ContractItem {
   updated_at: string;
 }
 
+/** Free-form details saved with evidence. The keys below are the ones the app itself writes. */
+export interface EvidenceMetadata {
+  location?: string | null;
+  source?: string;
+  tags?: string[];
+  /** Display name of the person who added it. `uploaded_by` is the record of who did. */
+  author?: string;
+  [key: string]: unknown;
+}
+
 export interface Evidence {
   id: string;
   code: string;
   project_id: string;
   uploaded_by: string;
-  storage_path: string;
-  original_filename: string;
-  mime_type: string;
+  /** Null for a written note with no file. */
+  storage_path: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  size_bytes?: number | null;
   evidence_type: EvidenceType;
   captured_at: string;
   title: string;
   description: string;
-  metadata: { location: string | null; source: string; tags: string[]; author?: string };
-  /** downscaled preview for images; ponytail: real files belong in Supabase Storage */
+  metadata: EvidenceMetadata;
+  /** Demo mode only: a downscaled preview. In live mode previews are signed links (see previewOf in lib/evidence.ts). */
   thumbnail: string | null;
   processing_status: ProcessingStatus;
   archived: boolean;

@@ -53,14 +53,31 @@ def is_pdf(data: bytes) -> bool:
     return b"%PDF-" in data[:1024]
 
 
-def is_docx(data: bytes) -> bool:
+def _zip_contains(data: bytes, member: str) -> bool:
     if not data.startswith(b"PK"):
         return False
     try:
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            return "word/document.xml" in archive.namelist()
+            return member in archive.namelist()
     except zipfile.BadZipFile:
         return False
+
+
+def is_docx(data: bytes) -> bool:
+    return _zip_contains(data, "word/document.xml")
+
+
+def is_xlsx(data: bytes) -> bool:
+    return _zip_contains(data, "xl/workbook.xml")
+
+
+def is_text(data: bytes) -> bool:
+    """Plain, readable text: valid UTF-8 with no control bytes other than whitespace."""
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return not any(ord(ch) < 32 and ch not in "\t\n\r" for ch in text)
 
 
 def contract_kind(filename: str, data: bytes) -> FileKind:
@@ -71,3 +88,48 @@ def contract_kind(filename: str, data: bytes) -> FileKind:
     if extension == "docx" and is_docx(data):
         return DOCX
     raise ApiError(415, "unsupported_media_type", "Only PDF or DOCX contracts are supported")
+
+
+JPEG = FileKind("image/jpeg", "jpg")
+PNG = FileKind("image/png", "png")
+WEBP = FileKind("image/webp", "webp")
+HEIC = FileKind("image/heic", "heic")
+XLSX = FileKind("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx")
+TEXT = FileKind("text/plain", "txt")
+CSV = FileKind("text/csv", "csv")
+
+# Images a browser can show directly, so they get a preview link.
+PREVIEWABLE_MIME_TYPES = frozenset({JPEG.mime_type, PNG.mime_type, WEBP.mime_type})
+
+_HEIF_BRANDS = (b"heic", b"heix", b"hevc", b"hevx", b"heim", b"heis", b"mif1", b"msf1")
+
+EVIDENCE_TYPES_MESSAGE = (
+    "That file type is not supported. Upload a photo (JPEG, PNG, WebP or HEIC), "
+    "or a PDF, Word, Excel, text or CSV file."
+)
+
+
+def evidence_kind(filename: str, data: bytes) -> FileKind:
+    """What an evidence file really is, judged by its contents.
+
+    Photos and documents are recognised from their signature whatever they are
+    called. Text has no signature, so it also needs a .txt or .csv extension.
+    """
+    if data.startswith(b"\xff\xd8\xff"):
+        return JPEG
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return PNG
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return WEBP
+    if data[4:8] == b"ftyp" and data[8:12] in _HEIF_BRANDS:
+        return HEIC
+    if is_pdf(data):
+        return PDF
+    if is_docx(data):
+        return DOCX
+    if is_xlsx(data):
+        return XLSX
+    extension = extension_of(filename)
+    if extension in ("txt", "csv") and is_text(data):
+        return CSV if extension == "csv" else TEXT
+    raise ApiError(415, "unsupported_media_type", EVIDENCE_TYPES_MESSAGE)

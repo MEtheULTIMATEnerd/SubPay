@@ -265,10 +265,10 @@ item a person has edited, confirmed or rejected is kept.
 | `mime_type` | text | Null when there is no file |
 | `size_bytes` | bigint | Up to 50 MB. Null when there is no file. |
 | `evidence_type` | text | `photo`, `document`, `docket`, `message`, `other`. Default `other`. |
-| `captured_at` | timestamptz | When the evidence was created on site, not when it was uploaded |
+| `captured_at` | timestamptz | When the evidence was created on site, not when it was uploaded. Defaults to now. |
 | `title` | text | 1 to 200 characters |
 | `description` | text | Default `''` |
-| `metadata` | jsonb | A JSON object, e.g. `{ "location": null, "source": "mobile_upload", "tags": [] }` |
+| `metadata` | jsonb | A JSON object, e.g. `{ "location": null, "source": "mobile_upload", "tags": [], "author": "Ava Alpha" }`. `author` is a display name only; `uploaded_by` is the record of who added it. |
 | `processing_status` | text | `uploaded`, `processing`, `ready`, `failed`. Default `uploaded`. |
 | `archived` | boolean | Default false |
 | `created_at`, `updated_at` | timestamptz | |

@@ -3,6 +3,7 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { refreshContracts } from "./contracts";
 import { LIVE } from "./env";
+import { refreshEvidence, resetEvidenceState } from "./evidence";
 
 type Status = { ready: boolean; error: string | null };
 
@@ -27,7 +28,7 @@ export async function loadProjectData(projectId: string): Promise<void> {
   const first = !statuses.get(projectId)?.ready;
   if (first) setStatus(projectId, LOADING);
   try {
-    await refreshContracts(projectId);
+    await Promise.all([refreshContracts(projectId), refreshEvidence(projectId)]);
     setStatus(projectId, READY);
   } catch (err) {
     // A failed quiet refresh keeps showing what was already loaded.
@@ -38,6 +39,7 @@ export async function loadProjectData(projectId: string): Promise<void> {
 /** For tests and sign-out: forget what has been loaded. */
 export function resetProjectData() {
   statuses.clear();
+  resetEvidenceState();
 }
 
 export function useProjectData(projectId: string): Status & { reload: () => void } {

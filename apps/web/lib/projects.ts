@@ -58,7 +58,7 @@ export async function refreshProjects(): Promise<void> {
   });
 }
 
-/** Drop the signed-in organisation's projects, and the contracts under them, from the local copy (used at sign-out). */
+/** Drop the signed-in organisation's projects, and the contracts and evidence under them, from the local copy (used at sign-out). */
 export function clearCachedProjects(d: Db) {
   const organisationId = currentOrganisationId(d);
   if (!organisationId) return;
@@ -66,6 +66,7 @@ export function clearCachedProjects(d: Db) {
   const contractIds = new Set(d.contracts.filter((c) => projectIds.has(c.project_id)).map((c) => c.id));
   d.contract_items = d.contract_items.filter((i) => !contractIds.has(i.contract_id));
   d.contracts = d.contracts.filter((c) => !projectIds.has(c.project_id));
+  d.evidence = d.evidence.filter((e) => !projectIds.has(e.project_id));
   d.projects = d.projects.filter((p) => !projectIds.has(p.id));
 }
 

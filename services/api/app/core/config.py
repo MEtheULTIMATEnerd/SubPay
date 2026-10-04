@@ -38,8 +38,14 @@ class Settings(BaseSettings):
     # "http": call the AI service at AI_SERVICE_URL.
     ai_extraction_provider: str = "mock"
 
+    # "mock": evidence is marked ready without calling the AI service.
+    # "http": call the AI service at AI_SERVICE_URL to analyse each evidence record.
+    ai_evidence_provider: str = "mock"
+
     # How long a signed download link for a stored file stays valid.
     signed_url_seconds: int = 300
+    # How long a signed preview link for an evidence photo stays valid.
+    preview_url_seconds: int = 3600
 
     @property
     def cors_origin_list(self) -> list[str]:
