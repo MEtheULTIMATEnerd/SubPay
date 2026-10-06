@@ -4,13 +4,12 @@
 // ponytail: synchronous localStorage calls; make these fetch() wrappers when FastAPI lands.
 import { commit, getDb, resetDb } from "./store";
 import * as ai from "./ai";
+import { ApiError } from "./errors";
 import type {
-  Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType,
+  Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType, Invitation, InvitationPreview, InvitationStatus,
 } from "./types";
 
-export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
+export { ApiError };
 
 const now = () => new Date().toISOString();
 const uid = () => crypto.randomUUID();
@@ -159,16 +158,19 @@ export function readiness(d: Db, claimId: string) {
 export type Readiness = ReturnType<typeof readiness>;
 
 // ---------- F01 auth ----------
+// Demo mode only. With Supabase configured, lib/auth.ts uses Supabase Auth and
+// GET/PATCH /api/v1/me instead. UI code should import from lib/auth.ts.
 export function signIn(email: string, password: string) {
   const p = getDb().profiles.find((x) => x.email.toLowerCase() === email.trim().toLowerCase());
   // ponytail: demo accepts any non-empty password; Supabase Auth owns credentials for real.
   if (!p || !password) throw new ApiError(401, "Email or password is incorrect");
   commit((d) => { d.session = { profile_id: p.id }; });
 }
-export function signUp(input: { full_name: string; email: string; password: string; organisation: string }) {
+export function signUp(input: { full_name: string; email: string; password: string; organisation: string; invite_code?: string }) {
   if (input.password.length < 8) throw new ApiError(422, "Password must be at least 8 characters");
   if (getDb().profiles.some((p) => p.email.toLowerCase() === input.email.trim().toLowerCase()))
     throw new ApiError(409, "An account with this email already exists");
+  if (input.invite_code) return acceptInvitation(input as typeof input & { invite_code: string });
   commit((d) => {
     const org = { id: uid(), name: input.organisation.trim(), created_at: now(), updated_at: now() };
     const prof: Profile = { id: uid(), email: input.email.trim(), organisation_id: org.id, full_name: input.full_name.trim(), role: "owner", created_at: now(), updated_at: now() };
@@ -178,15 +180,95 @@ export function signUp(input: { full_name: string; email: string; password: stri
   });
 }
 export const signOut = () => commit((d) => { d.session = null; });
+
+// ---------- F01 organisation members and invitations (demo mode) ----------
+// With Supabase configured, lib/members.ts calls /api/v1/organisation instead.
+export const INVITATION_INVALID = "This invitation is no longer valid. Ask the organisation's owner for a new link.";
+const INVITE_DAYS = 7;
+const invitationStatus = (i: { accepted_at: string | null; expires_at: string }): InvitationStatus =>
+  i.accepted_at ? "accepted" : i.expires_at <= now() ? "expired" : "pending";
+const openInvitation = (d: Db, code: string) =>
+  (d.invitations ?? []).find((i) => i.code === code && invitationStatus(i) === "pending") ?? null;
+function owner(d: Db): Profile {
+  const p = me(d);
+  if (p.role !== "owner") throw new ApiError(403, "Only an owner can manage invitations");
+  return p;
+}
+
+export function listInvitations(): Invitation[] {
+  const d = getDb();
+  const p = owner(d);
+  return (d.invitations ?? [])
+    .filter((i) => i.organisation_id === p.organisation_id)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .map((i) => ({ id: i.id, email: i.email, role: i.role, invited_by: i.invited_by, expires_at: i.expires_at, accepted_at: i.accepted_at, created_at: i.created_at, status: invitationStatus(i) }));
+}
+/** Returns the new invitation's id and its code. The code is what goes in the invite link. */
+export function createInvitation(rawEmail: string): { id: string; code: string } {
+  const email = rawEmail.trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || email.length > 320) throw new ApiError(422, "Enter a valid email address");
+  const id = uid();
+  const code = `${uid()}${uid()}`.replaceAll("-", "");
+  commit((d) => {
+    const p = owner(d);
+    if (d.profiles.some((x) => x.organisation_id === p.organisation_id && x.email.toLowerCase() === email))
+      throw new ApiError(409, "This person is already a member of your organisation");
+    const invitations = (d.invitations ??= []);
+    if (invitations.some((i) => i.organisation_id === p.organisation_id && i.email === email && !i.accepted_at))
+      throw new ApiError(409, "This person has already been invited. Revoke that invitation to send a new one.");
+    invitations.push({
+      id, organisation_id: p.organisation_id, email, role: "member", invited_by: p.id, code,
+      expires_at: new Date(Date.now() + INVITE_DAYS * 86_400_000).toISOString(), accepted_at: null, created_at: now(),
+    });
+  });
+  return { id, code };
+}
+export function revokeInvitation(id: string) {
+  commit((d) => {
+    const p = owner(d);
+    const index = (d.invitations ?? []).findIndex((i) => i.id === id && i.organisation_id === p.organisation_id && !i.accepted_at);
+    if (index === -1) throw new ApiError(404, "Invitation not found");
+    d.invitations!.splice(index, 1);
+  });
+}
+export function previewInvitation(code: string): InvitationPreview | null {
+  const d = getDb();
+  const invitation = openInvitation(d, code);
+  if (!invitation) return null;
+  return { organisation_name: d.organisations.find((o) => o.id === invitation.organisation_id)!.name, email: invitation.email, expires_at: invitation.expires_at };
+}
+/** Sign up through an invite link: join the inviting organisation as a member. The link works once. */
+function acceptInvitation(input: { full_name: string; email: string; invite_code: string }) {
+  commit((d) => {
+    const invitation = openInvitation(d, input.invite_code);
+    if (!invitation || invitation.email !== input.email.trim().toLowerCase()) throw new ApiError(410, INVITATION_INVALID);
+    const prof: Profile = { id: uid(), email: invitation.email, organisation_id: invitation.organisation_id, full_name: input.full_name.trim(), role: invitation.role, created_at: now(), updated_at: now() };
+    d.profiles.push(prof);
+    invitation.accepted_at = now();
+    d.session = { profile_id: prof.id };
+  });
+}
 export function updateProfile(full_name: string) {
   commit((d) => { const p = me(d); p.full_name = full_name.trim(); p.updated_at = now(); });
 }
 export const resetDemo = () => resetDb(getDb().session);
 export const setAiAvailable = (v: boolean) => commit((d) => { d.settings.ai_available = v; });
 
+/** Lets live-mode code (lib/projects.ts, lib/contracts.ts) record activity in the audit trail, which is still mock data. */
+export function logAudit(project_id: string | null, action: string, entity: string, entity_id: string, metadata: Record<string, unknown> = {}, ai = false) {
+  commit((d) => audit(d, project_id, action, entity, entity_id, metadata, ai));
+}
+
+/** Lets live-mode code raise a notification for the organisation. Notifications are still mock data. */
+export function notifyTeam(project_id: string, title: string, body: string, href: string) {
+  commit((d) => notify(d, project_id, title, body, href));
+}
+
 // ---------- F02 projects ----------
+// Demo mode only. With Supabase configured, lib/projects.ts calls /api/v1/projects
+// instead. UI code should import from lib/projects.ts.
 type ProjectInput = Pick<Project, "name" | "client_name" | "site_address" | "start_date" | "end_date">;
-function validateProject(p: ProjectInput) {
+export function validateProject(p: ProjectInput) {
   if (!p.name.trim()) throw new ApiError(422, "Project name is required");
   if (p.start_date && p.end_date && p.end_date < p.start_date) throw new ApiError(422, "End date must be after start date");
 }
@@ -209,6 +291,8 @@ export function setProjectStatus(id: string, status: Project["status"]) {
 }
 
 // ---------- F03/F04 contracts ----------
+// Demo mode only. With Supabase configured, lib/contracts.ts calls the API
+// instead. UI code should import from lib/contracts.ts.
 export const CONTRACT_TYPES = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"];
 export const MAX_CONTRACT_BYTES = 25 * 1024 * 1024;
 
@@ -290,6 +374,7 @@ export interface EvidenceInput {
   location: string | null;
   thumbnail: string | null;
   source?: string;
+  tags?: string[];
 }
 export const MAX_EVIDENCE_BYTES = 50 * 1024 * 1024;
 
@@ -306,7 +391,7 @@ export function uploadEvidence(pid: string, input: EvidenceInput, { autoMatch = 
       storage_path: `evidence/${pid}/${id}/original.${ext}`, original_filename: input.file?.name ?? "note.txt",
       mime_type: input.file?.type || "text/plain", evidence_type: input.evidence_type, captured_at: input.captured_at,
       title: input.title.trim() || input.file?.name || "Note", description: input.description.trim(),
-      metadata: { location: input.location, source: input.source ?? "desktop_upload", tags: [], author: me(d).full_name },
+      metadata: { location: input.location, source: input.source ?? "desktop_upload", tags: input.tags ?? [], author: me(d).full_name },
       thumbnail: input.thumbnail, processing_status: autoMatch ? "processing" : "ready", archived: false, created_at: now(), updated_at: now(),
     });
     audit(d, pid, "evidence.uploaded", "evidence", id, { title: input.title, type: input.evidence_type });
@@ -353,12 +438,13 @@ export function runMatching(id: string) {
   });
 }
 
-export function updateEvidence(id: string, patch: Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null }) {
+export function updateEvidence(id: string, patch: Partial<Pick<Evidence, "title" | "description" | "evidence_type" | "captured_at">> & { location?: string | null; tags?: string[] }) {
   commit((d) => {
     const ev = evidence(d, id);
-    const { location, ...rest } = patch;
+    const { location, tags, ...rest } = patch;
     Object.assign(ev, rest, { updated_at: now() });
     if (location !== undefined) ev.metadata = { ...ev.metadata, location };
+    if (tags !== undefined) ev.metadata = { ...ev.metadata, tags };
     audit(d, ev.project_id, "evidence.edited", "evidence", id, { evidence: ev.code });
   });
 }

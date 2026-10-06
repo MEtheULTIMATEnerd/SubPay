@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
-import { read, reviewContractItem, updateContractItem } from "@/lib/api";
+import { read } from "@/lib/api";
+import { reviewContractItem, updateContractItem, type ItemPatch, type ReviewAction } from "@/lib/contracts";
 import type { ContractItem } from "@/lib/types";
 import { Banner, Dialog, ErrorState, Icon, Page, PageHeader, confColor, cx, fmtDate, money, pct } from "@/components/ui";
 
@@ -140,14 +141,31 @@ const FIELDS: [keyof ContractItem, string, "text" | "number" | "date"][] = [
 function ItemEditor({ item, onDone }: { item: ContractItem; onDone: () => void }) {
   const db = useData();
   const [f, setF] = useState(() => Object.fromEntries(FIELDS.map(([k]) => [k, item[k] == null ? "" : String(item[k])])));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
 
   function save() {
     const patch = Object.fromEntries(
       FIELDS.map(([k, , t]) => [k, f[k] === "" ? null : t === "number" ? Number(f[k]) : f[k]]),
     );
     if (!patch.description) patch.description = item.description;
-    updateContractItem(item.id, patch);
+    return updateContractItem(item.id, patch as ItemPatch);
   }
+
+  /** Run the steps in order; close the dialog only if they all succeed. */
+  async function run(close: boolean, ...steps: (() => Promise<void> | void)[]) {
+    setError("");
+    setBusy(true);
+    try {
+      for (const step of steps) await step();
+      if (close) onDone();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const review = (status: ReviewAction) => () => reviewContractItem(item.id, status);
 
   return (
     <div>
@@ -166,11 +184,12 @@ function ItemEditor({ item, onDone }: { item: ContractItem; onDone: () => void }
           </label>
         ))}
       </div>
+      {error && <p className="mt-4 rounded-xl bg-red-bg px-4 py-3 text-sm text-red" role="alert">{error}</p>}
       <div className="mt-6 flex flex-wrap justify-end gap-2">
-        {item.review_status !== "rejected" && <button className="btn-danger" onClick={() => { reviewContractItem(item.id, "rejected"); onDone(); }}>Reject item</button>}
-        {item.review_status !== "draft" && <button className="btn-outline" onClick={() => reviewContractItem(item.id, "draft")}>Back to draft</button>}
-        <button className="btn-outline" onClick={() => { save(); onDone(); }}>Save edits</button>
-        <button className="btn-primary" onClick={() => { save(); reviewContractItem(item.id, "confirmed"); onDone(); }}>Save & confirm</button>
+        {item.review_status !== "rejected" && <button className="btn-danger" disabled={busy} onClick={() => void run(true, review("rejected"))}>Reject item</button>}
+        {item.review_status !== "draft" && <button className="btn-outline" disabled={busy} onClick={() => void run(false, review("draft"))}>Back to draft</button>}
+        <button className="btn-outline" disabled={busy} onClick={() => void run(true, save)}>Save edits</button>
+        <button className="btn-primary" disabled={busy} onClick={() => void run(true, save, review("confirmed"))}>Save & confirm</button>
       </div>
     </div>
   );

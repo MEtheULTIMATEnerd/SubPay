@@ -41,20 +41,29 @@ export function StatusPill({ status }: { status: Project["status"] }) {
 
 type Form = Pick<Project, "name" | "client_name" | "site_address" | "start_date" | "end_date">;
 export function ProjectForm({ initial, submitLabel, onSubmit, onCancel }: {
-  initial?: Partial<Form>; submitLabel: string; onSubmit: (f: Form) => void; onCancel?: () => void;
+  initial?: Partial<Form>; submitLabel: string; onSubmit: (f: Form) => void | Promise<void>; onCancel?: () => void;
 }) {
   const [f, setF] = useState<Form>({
     name: initial?.name ?? "", client_name: initial?.client_name ?? "", site_address: initial?.site_address ?? "",
     start_date: initial?.start_date ?? null, end_date: initial?.end_date ?? null,
   });
   const [error, setError] = useState("");
+  const [pending, setPending] = useState(false);
   const set = (k: keyof Form) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value || (k.endsWith("date") ? null : "") });
   return (
     <form
       className="space-y-4"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        try { onSubmit(f); } catch (err) { setError((err as Error).message); }
+        setError("");
+        setPending(true);
+        try {
+          await onSubmit(f);
+        } catch (err) {
+          setError((err as Error).message);
+        } finally {
+          setPending(false);
+        }
       }}
     >
       {error && <p className="rounded-xl bg-red-bg px-4 py-3 text-sm text-red" role="alert">{error}</p>}
@@ -66,8 +75,8 @@ export function ProjectForm({ initial, submitLabel, onSubmit, onCancel }: {
         <label className="block"><span className="label">End date</span><input className="input" type="date" value={f.end_date ?? ""} onChange={set("end_date")} /></label>
       </div>
       <div className="flex justify-end gap-2 pt-2">
-        {onCancel && <button type="button" className="btn-outline" onClick={onCancel}>Cancel</button>}
-        <button className="btn-dark">{submitLabel}</button>
+        {onCancel && <button type="button" className="btn-outline" onClick={onCancel} disabled={pending}>Cancel</button>}
+        <button className="btn-dark" disabled={pending}>{pending ? "Saving…" : submitLabel}</button>
       </div>
     </form>
   );

@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { createProject } from "@/lib/api";
+import { createProject } from "@/lib/projects";
 import { ProjectForm } from "@/components/projects";
 import { Page, PageHeader } from "@/components/ui";
 
@@ -14,7 +14,7 @@ export default function NewProjectPage() {
           <ProjectForm
             submitLabel="Create project"
             onCancel={() => router.back()}
-            onSubmit={(f) => router.push(`/projects/${createProject(f)}/contracts`)}
+            onSubmit={async (f) => router.push(`/projects/${await createProject(f)}/contracts`)}
           />
         </div>
       </div>

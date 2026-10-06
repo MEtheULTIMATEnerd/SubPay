@@ -4,6 +4,24 @@
 
 A clickable, fully working **frontend prototype** of the SubPay MVP (F01–F20), styled from the Assessment 2b deck. It runs entirely in the browser: a mock service layer and a deterministic mock AI stand in for FastAPI, Supabase and Arya's AI services, using the same data shapes the team prompts agreed on.
 
+## Repository
+
+```
+apps/web/            Next.js frontend (the working prototype described below)
+services/api/        FastAPI application, /api/v1     (auth, profile, projects, contract upload and extraction)
+services/ai/         AI service, /ai/v1               (not built yet)
+supabase/            Migrations, seed data and database checks
+packages/contracts/  Shared API / type contracts
+tests/integration/   Cross-service end-to-end tests
+docs/                Architecture, API contracts, database schema, development guide
+```
+
+Start with [docs/development-guide.md](docs/development-guide.md). The shared
+contracts every workstream builds against are in
+[docs/api-contracts.md](docs/api-contracts.md) and
+[docs/database-schema.md](docs/database-schema.md). What is built and what is
+still mock is tracked in [docs/architecture.md](docs/architecture.md#7-current-state).
+
 ## Run it
 
 ```bash
@@ -14,7 +32,9 @@ npm run dev        # http://localhost:3000
 
 Click **Continue as demo user** (Ollie Reid, Kearney Formwork Pty Ltd). Any password works for seeded accounts. Data is saved in your browser's localStorage. To start over, go to **Profile & settings → Reset demo data**.
 
-Checks: `npm test` (Vitest), `npm run typecheck`, `npm run lint`, `npm run build`.
+That is **demo mode**, the default. To use real Supabase sign-in and the API instead (**live mode**), copy `apps/web/.env.example` to `apps/web/.env.local`, fill it in, and follow [docs/development-guide.md](docs/development-guide.md).
+
+Checks: `npm test` (Vitest), `npm run test:e2e` (Playwright), `npm run typecheck`, `npm run lint`, `npm run build`.
 
 ## Demo script (Hume St Tower, Claim #7)
 
@@ -50,16 +70,20 @@ apps/web/
 | Prototype | Replace with | Owner |
 |---|---|---|
 | `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
-| `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI) | Jaden |
-| other `lib/api.ts` functions | `fetch` calls to the matching `/api/v1/...` endpoints | Kinori / Rehan |
+| `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
+| member and invitation functions in `lib/api.ts` | `/api/v1/organisation/members`, `/api/v1/organisation/invitations` and `/api/v1/invitations/{code}`. **Done** in live mode: see `lib/members.ts`. | Platform |
+| project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
+| contract and contract item functions in `lib/api.ts` | `/api/v1/.../contracts` and `/api/v1/contract-items`. **Done** in live mode: see `lib/contracts.ts`. | Kinori |
+| evidence functions in `lib/api.ts` (upload, edit, archive) | `/api/v1/.../evidence`. **Done** in live mode: see `lib/evidence.ts`. | Kinori |
+| other `lib/api.ts` functions (matches, claims, audit, notifications) | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Rehan / Jaden |
 | `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
-| `thumbnail` previews / file metadata | Supabase Storage with signed URLs | Kinori |
+| `thumbnail` previews / file metadata | Supabase Storage with signed URLs. **Done** in live mode: see `previewOf` in `lib/evidence.ts`. | Kinori |
 
-Pages only call `lib/api.ts`, so the swap doesn't touch the UI.
+Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/members.ts`, `lib/projects.ts`, `lib/contracts.ts`, `lib/evidence.ts`), so the swap is made one feature at a time.
 
 ## Prototype limits (deliberate)
 
-- Uploaded files are not stored. Only their metadata is kept, plus a small preview for images.
+- In demo mode uploaded files are not stored. Only their metadata is kept, plus a small preview for images. In live mode contracts and evidence files are stored in private Supabase Storage buckets.
 - The mock AI uses keyword overlap. Its confidence values are placeholders, not calibrated scores.
-- Auth is simulated, so no passwords are stored. "Organisation isolation" is enforced in `lib/api.ts`, which is where RLS will sit.
+- In demo mode auth is simulated, so no passwords are stored. "Organisation isolation" for mock data is enforced in `lib/api.ts`. In live mode Supabase Auth and database RLS do this for real.
 - "Evidence support coverage" is the share of claimed value backed by strong, human-confirmed evidence. It is not a measure of claim validity or legal entitlement.

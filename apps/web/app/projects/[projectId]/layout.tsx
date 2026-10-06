@@ -3,8 +3,9 @@ import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { useData } from "@/lib/store";
 import { read } from "@/lib/api";
+import { useProjectData } from "@/lib/project-data";
 import { StatusPill } from "@/components/projects";
-import { ErrorState, Page, cx } from "@/components/ui";
+import { ErrorState, Loading, Page, cx } from "@/components/ui";
 
 const TABS = [
   ["Overview", ""],
@@ -20,6 +21,8 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
   const { projectId } = useParams<{ projectId: string }>();
   const path = usePathname();
   const project = read.project(db, projectId);
+  // Contracts and their items are loaded from the API when the project is opened.
+  const data = useProjectData(projectId);
 
   if (!project)
     return (
@@ -59,7 +62,15 @@ export default function ProjectLayout({ children }: { children: React.ReactNode 
       {project.status === "archived" && (
         <div className="no-print bg-amber-bg px-4 py-2 text-center text-sm text-amber">This project is archived. Restore it from Overview to keep working on it.</div>
       )}
-      {children}
+      {data.error ? (
+        <Page>
+          <ErrorState
+            title="This project's data could not be loaded"
+            body={data.error}
+            action={<button className="btn-outline btn-sm" onClick={data.reload}>Try again</button>}
+          />
+        </Page>
+      ) : data.ready ? children : <Loading />}
     </>
   );
 }

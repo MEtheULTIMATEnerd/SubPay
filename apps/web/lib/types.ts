@@ -22,6 +22,33 @@ export interface Profile {
   updated_at: string;
 }
 
+export type InvitationStatus = "pending" | "accepted" | "expired";
+
+/** An owner's invitation for one email address to join their organisation as a member. */
+export interface Invitation {
+  id: string;
+  email: string;
+  role: Role;
+  invited_by: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  status: InvitationStatus;
+}
+
+/** What a signed-out person sees when they open an invite link. */
+export interface InvitationPreview {
+  organisation_name: string;
+  email: string;
+  expires_at: string;
+}
+
+/** Demo mode only: the invitation with its organisation and its code. */
+export interface MockInvitation extends Omit<Invitation, "status"> {
+  organisation_id: string;
+  code: string;
+}
+
 export interface Project {
   id: string;
   organisation_id: string;
@@ -70,8 +97,22 @@ export interface ContractItem {
   edited_by_human: boolean;
   reviewed_by: string | null;
   source_reference: string | null;
+  /** The values exactly as the AI returned them. Set by the API; absent in demo mode. */
+  extracted_values?: Record<string, unknown> | null;
+  /** Position in the contract's schedule. Set by the API; absent in demo mode. */
+  sort_order?: number;
   created_at: string;
   updated_at: string;
+}
+
+/** Free-form details saved with evidence. The keys below are the ones the app itself writes. */
+export interface EvidenceMetadata {
+  location?: string | null;
+  source?: string;
+  tags?: string[];
+  /** Display name of the person who added it. `uploaded_by` is the record of who did. */
+  author?: string;
+  [key: string]: unknown;
 }
 
 export interface Evidence {
@@ -79,15 +120,17 @@ export interface Evidence {
   code: string;
   project_id: string;
   uploaded_by: string;
-  storage_path: string;
-  original_filename: string;
-  mime_type: string;
+  /** Null for a written note with no file. */
+  storage_path: string | null;
+  original_filename: string | null;
+  mime_type: string | null;
+  size_bytes?: number | null;
   evidence_type: EvidenceType;
   captured_at: string;
   title: string;
   description: string;
-  metadata: { location: string | null; source: string; tags: string[]; author?: string };
-  /** downscaled preview for images; ponytail: real files belong in Supabase Storage */
+  metadata: EvidenceMetadata;
+  /** Demo mode only: a downscaled preview. In live mode previews are signed links (see previewOf in lib/evidence.ts). */
   thumbnail: string | null;
   processing_status: ProcessingStatus;
   archived: boolean;
@@ -191,4 +234,6 @@ export interface Db {
   variations: Variation[];
   notifications: Notification[];
   audit_events: AuditEvent[];
+  /** Demo mode only. Optional so a store saved before invitations existed still loads. */
+  invitations?: MockInvitation[];
 }

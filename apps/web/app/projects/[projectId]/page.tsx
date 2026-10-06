@@ -3,9 +3,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
-import { read, readiness, setProjectStatus, updateProject } from "@/lib/api";
+import { read, readiness } from "@/lib/api";
+import { setProjectStatus, updateProject } from "@/lib/projects";
+import type { Project } from "@/lib/types";
 import { ProjectForm } from "@/components/projects";
-import { Dialog, Icon, Page, PageHeader, Progress, cx, fmtDate, fmtDateTime } from "@/components/ui";
+import { Dialog, ErrorState, Icon, Page, PageHeader, Progress, cx, fmtDate, fmtDateTime } from "@/components/ui";
 
 export default function ProjectOverview() {
   const db = useData();
@@ -13,6 +15,21 @@ export default function ProjectOverview() {
   const p = read.project(db, projectId)!;
   const [editing, setEditing] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function changeStatus(status: Project["status"]) {
+    setError("");
+    setBusy(true);
+    try {
+      await setProjectStatus(p.id, status);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+      setArchiving(false);
+    }
+  }
 
   const base = `/projects/${p.id}`;
   const contracts = read.contracts(db, p.id);
@@ -43,10 +60,11 @@ export default function ProjectOverview() {
             <button className="btn-outline" onClick={() => setEditing(true)}>Edit project</button>
             {p.status === "active"
               ? <button className="btn-outline" onClick={() => setArchiving(true)}>Archive</button>
-              : <button className="btn-primary" onClick={() => setProjectStatus(p.id, "active")}>Restore project</button>}
+              : <button className="btn-primary" disabled={busy} onClick={() => void changeStatus("active")}>Restore project</button>}
           </>
         }
       />
+      {error && <div className="mb-6"><ErrorState title={error} /></div>}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="card p-6 lg:col-span-2">
@@ -97,13 +115,13 @@ export default function ProjectOverview() {
       </div>
 
       <Dialog open={editing} onClose={() => setEditing(false)} title="Edit project">
-        <ProjectForm initial={p} submitLabel="Save changes" onCancel={() => setEditing(false)} onSubmit={(f) => { updateProject(p.id, f); setEditing(false); }} />
+        <ProjectForm initial={p} submitLabel="Save changes" onCancel={() => setEditing(false)} onSubmit={async (f) => { await updateProject(p.id, f); setEditing(false); }} />
       </Dialog>
       <Dialog open={archiving} onClose={() => setArchiving(false)} title="Archive project?">
         <p className="text-sm text-muted">Archived projects are hidden from your dashboard. All contracts, evidence and audit history are kept, and you can restore it any time.</p>
         <div className="mt-6 flex justify-end gap-2">
           <button className="btn-outline" onClick={() => setArchiving(false)}>Cancel</button>
-          <button className="btn-dark" onClick={() => { setProjectStatus(p.id, "archived"); setArchiving(false); }}>Archive project</button>
+          <button className="btn-dark" disabled={busy} onClick={() => void changeStatus("archived")}>{busy ? "Archiving…" : "Archive project"}</button>
         </div>
       </Dialog>
     </Page>

@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
+import { useEffect } from "react";
 import { useData } from "@/lib/store";
 import { read, readiness } from "@/lib/api";
+import { refreshProjects } from "@/lib/projects";
 import { NewProjectButton, ProjectCard } from "@/components/projects";
 import { Banner, EmptyState, Page, PageHeader, cx } from "@/components/ui";
 
@@ -10,6 +12,9 @@ export default function Dashboard() {
   const user = read.me(db)!;
   const org = read.org(db);
   const projects = read.projects(db);
+
+  // Pick up projects colleagues have added since sign-in. The cached list shows meanwhile.
+  useEffect(() => void refreshProjects().catch(() => {}), []);
   const active = projects.filter((p) => p.status === "active");
   const hour = new Date().getHours();
 

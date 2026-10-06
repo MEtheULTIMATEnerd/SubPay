@@ -1,7 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useData } from "@/lib/store";
 import { read } from "@/lib/api";
+import { refreshProjects } from "@/lib/projects";
 import { NewProjectButton, ProjectCard } from "@/components/projects";
 import { EmptyState, Icon, Page, PageHeader, cx } from "@/components/ui";
 
@@ -10,6 +11,9 @@ export default function ProjectsPage() {
   const [tab, setTab] = useState<"active" | "archived">("active");
   const [q, setQ] = useState("");
   const all = read.projects(db);
+
+  // Pick up projects colleagues have added since sign-in. The cached list shows meanwhile.
+  useEffect(() => void refreshProjects().catch(() => {}), []);
   const list = all
     .filter((p) => p.status === tab)
     .filter((p) => `${p.name} ${p.client_name} ${p.site_address}`.toLowerCase().includes(q.toLowerCase()));
