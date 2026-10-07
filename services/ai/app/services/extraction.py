@@ -30,13 +30,13 @@ _FITOUT_SCHEDULE: list[_Row] = [
 
 _FORMWORK_SCHEDULE: list[_Row] = [
     ("1.1", "Preliminaries and site establishment", 1, "item", 4500, 4500, 0.82, None),
-    ("2.1", "Formwork, slab edges", 180, "m2", 75, 13500, 0.90, None),
-    ("2.2", "Formwork, columns", 96, "m2", 95, 9120, 0.87, None),
+    ("2.1", "Formwork, slab edges", 180, "m²", 75, 13500, 0.90, None),
+    ("2.2", "Formwork, columns", 96, "m²", 95, 9120, 0.87, None),
     (
         "3.1",
         "Concrete supply and place",
         110,
-        "m3",
+        "m³",
         245,
         26950,
         0.86,
@@ -86,4 +86,3 @@ class ContractExtractionService:
 
     def extract(self, request: ExtractionRequest) -> ExtractionResult:
         return self._provider.extract(request)
-

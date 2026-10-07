@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     # "http": call the AI service at AI_SERVICE_URL to analyse each evidence record.
     ai_evidence_provider: str = "mock"
 
+    # "mock": deterministic local matching, no AI service needed.
+    # "http": call the AI service at AI_SERVICE_URL.
+    ai_matching_provider: str = "mock"
+
+    # "mock": deterministic local evidence support assessment, no AI service needed.
+    # "http": call the AI service at AI_SERVICE_URL.
+    ai_completeness_provider: str = "mock"
+
+    # "mock": deterministic local potential variation detection, no AI service needed.
+    # "http": call the AI service at AI_SERVICE_URL.
+    ai_variation_provider: str = "mock"
+
     # How long a signed download link for a stored file stays valid.
     signed_url_seconds: int = 300
     # How long a signed preview link for an evidence photo stays valid.

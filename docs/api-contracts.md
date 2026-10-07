@@ -562,10 +562,41 @@ service answers:
 }
 ```
 
+Exact request schema:
+
+| Field | Type | Rules |
+|---|---|---|
+| `contract_id` | uuid | Same value as the path parameter |
+| `original_filename` | string | 1 to 255 characters |
+| `mime_type` | string | Non-empty |
+| `document_url` | string or null | Short-lived signed URL for the stored document |
+
+Exact response schema:
+
+| Field | Type | Rules |
+|---|---|---|
+| `contract_id` | uuid | Must match the request |
+| `items` | array of ExtractedContractItem | May be empty only if no schedule items were found |
+
+`ExtractedContractItem`:
+
+| Field | Type | Rules |
+|---|---|---|
+| `item_code` | string | 1 to 50 characters |
+| `description` | string | 1 to 2000 characters |
+| `quantity` | number or null | Not negative |
+| `unit` | string or null | |
+| `rate` | number or null | Not negative |
+| `amount` | number or null | Not negative |
+| `conditions` | string or null | |
+| `notice_requirement` | string or null | |
+| `due_date` | date or null | `YYYY-MM-DD` |
+| `confidence` | number | 0 to 1 |
+| `source_reference` | string or null | Where in the source document the item came from |
+
 Only `item_code`, `description` and `confidence` are guaranteed. Everything
-else may be `null` or left out. `confidence` is between 0 and 1, and
-`contract_id` must match the request. An answer that breaks these rules is
-treated as an AI outage.
+else may be `null` or left out. The AI must not fabricate missing contract
+information. An answer that breaks these rules is treated as an AI outage.
 
 The API side of this boundary is `services/api/app/ai/extraction.py`. Until the
 AI service exists, a deterministic mock answers instead
@@ -592,11 +623,54 @@ else changes.
 }
 ```
 
-`document_url` is a signed link that expires after five minutes. It is `null`,
-along with `original_filename` and `mime_type`, for a written note. Any `2xx`
-answer marks the evidence `ready`; the body is not read, because the AI
-service keeps its own results. Anything else, or no answer within the timeout,
-marks it `failed`.
+Exact request schema:
+
+| Field | Type | Rules |
+|---|---|---|
+| `evidence_id` | uuid | Same value as the path parameter |
+| `project_id` | uuid | Project that owns the evidence |
+| `evidence_type` | string | Usually `photo`, `document`, `docket`, `message` or `other` |
+| `title` | string | 1 to 200 characters |
+| `description` | string | Up to 5000 characters |
+| `captured_at` | datetime | ISO 8601 |
+| `metadata` | object | Free-form metadata saved with the evidence |
+| `original_filename` | string or null | Null for a written note |
+| `mime_type` | string or null | Null for a written note |
+| `document_url` | string or null | Short-lived signed URL for the stored file |
+
+Exact response schema:
+
+```json
+{
+  "evidence_id": "uuid",
+  "signals": {
+    "objects": ["formwork"],
+    "activities": ["concrete pour"],
+    "extracted_text": "Level 3 slab pour...",
+    "location": "Level 3 east",
+    "date": "2026-09-14T01:30:00Z",
+    "other_signals": { "source": "mobile_upload" }
+  },
+  "confidence": 0.82
+}
+```
+
+`EvidenceSignals`:
+
+| Field | Type | Rules |
+|---|---|---|
+| `objects` | string[] | Objects/entities identified in the evidence |
+| `activities` | string[] | Work activities or site events identified |
+| `extracted_text` | string or null | OCR/text/summary signal |
+| `location` | string or null | Location signal if identified |
+| `date` | datetime or null | Date signal if identified |
+| `other_signals` | object | Additional structured signals |
+
+`confidence` is 0 to 1. `document_url` is a signed link that expires after
+five minutes. It is `null`, along with `original_filename` and `mime_type`,
+for a written note. The current application API treats any `2xx` answer as
+ready and does not yet persist the response body. Anything else, or no answer
+within the timeout, marks the evidence `failed`.
 
 The API side of this boundary is `services/api/app/ai/evidence.py`. With
 `AI_EVIDENCE_PROVIDER=mock` (the default) every record is marked `ready`
@@ -604,7 +678,40 @@ without a call. `AI_EVIDENCE_PROVIDER=http` calls `AI_SERVICE_URL`.
 
 ### Evidence matching
 
-Input: one evidence record and the project's confirmed contract items.
+`POST /ai/v1/matches`.
+
+Input: structured evidence signals and the project's confirmed contract items.
+
+Exact request schema:
+
+```json
+{
+  "evidence_id": "uuid",
+  "signals": {
+    "objects": ["formwork"],
+    "activities": ["concrete pour"],
+    "extracted_text": "Level 3 slab pour complete.",
+    "location": "Level 3",
+    "date": "2026-09-14T01:30:00Z",
+    "other_signals": {}
+  },
+  "contract_items": [
+    {
+      "contract_item_id": "uuid",
+      "item_code": "2.1",
+      "description": "Formwork, slab edges",
+      "quantity": 180,
+      "unit": "m²",
+      "amount": 13500
+    }
+  ]
+}
+```
+
+`contract_items` carries only the fields needed for AI matching. It does not
+replace the shared `ContractItem` application model.
+
+Exact response schema:
 
 ```json
 {
@@ -623,7 +730,70 @@ Input: one evidence record and the project's confirmed contract items.
 
 An empty `matches` array is a valid answer.
 
+`assessment` is `strong`, `partial` or `weak`; do not use `verified`.
+`confidence` is 0 to 1. The AI suggests candidate matches only. The
+application wraps accepted suggestions in the shared `EvidenceMatch` workflow
+when that backend integration exists.
+
+### Completeness
+
+`POST /ai/v1/completeness`.
+
+Completeness here means AI-estimated evidence support, not legal validity and
+not the human-confirmed claim readiness shown in the claim dashboard.
+
+Exact request schema:
+
+```json
+{
+  "contract_item_id": "uuid",
+  "matches": [
+    {
+      "contract_item_id": "uuid",
+      "confidence": 0.91,
+      "assessment": "strong",
+      "reason": "Evidence indicates electrical conduit installation",
+      "missing_evidence": []
+    }
+  ]
+}
+```
+
+Exact response schema:
+
+```json
+{
+  "contract_item_id": "uuid",
+  "status": "strong",
+  "confidence": 0.91,
+  "reason": "Evidence support is based on the strongest AI suggestion."
+}
+```
+
+`status` is `strong`, `partial`, `weak` or `missing`. `confidence` is 0 to 1.
+
 ### Potential variation
+
+`POST /ai/v1/variations/detect`.
+
+Exact request schema:
+
+```json
+{
+  "evidence_id": "uuid",
+  "signals": {
+    "objects": [],
+    "activities": ["additional work"],
+    "extracted_text": "Builder instructed extra penetrations not on the drawings.",
+    "location": "Level 3",
+    "date": "2026-09-14T01:30:00Z",
+    "other_signals": {}
+  },
+  "matches": []
+}
+```
+
+Exact response schema:
 
 ```json
 {
@@ -635,7 +805,9 @@ An empty `matches` array is a valid answer.
 }
 ```
 
-A flag is a prompt for human review. It is not a decision about entitlement.
+`potential_variation` may be `true` or `false`. `confidence` is 0 to 1.
+`related_evidence_ids` is empty when no variation is flagged. A flag is a
+prompt for human review. It is not a decision about entitlement.
 
 ### Failure
 

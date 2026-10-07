@@ -16,8 +16,15 @@ import httpx2
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.ai.completeness import (
+    CompletenessProvider,
+    HttpCompletenessProvider,
+    MockCompletenessProvider,
+)
 from app.ai.evidence import EvidenceProcessor, HttpEvidenceProcessor, MockEvidenceProcessor
 from app.ai.extraction import ExtractionProvider, HttpExtractionProvider, MockExtractionProvider
+from app.ai.matching import HttpMatchingProvider, MatchingProvider, MockMatchingProvider
+from app.ai.variations import HttpVariationProvider, MockVariationProvider, VariationProvider
 from app.core import errors
 from app.core.config import Settings, get_settings
 from app.core.security import (
@@ -202,6 +209,36 @@ def get_evidence_processor(
     if settings.ai_evidence_provider == "http":
         return HttpEvidenceProcessor(http, settings.ai_service_url)
     return MockEvidenceProcessor()
+
+
+def get_matching_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> MatchingProvider:
+    """The AI boundary for evidence-to-contract candidate matching."""
+    if settings.ai_matching_provider == "http":
+        return HttpMatchingProvider(http, settings.ai_service_url)
+    return MockMatchingProvider()
+
+
+def get_completeness_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> CompletenessProvider:
+    """The AI boundary for evidence support completeness assessment."""
+    if settings.ai_completeness_provider == "http":
+        return HttpCompletenessProvider(http, settings.ai_service_url)
+    return MockCompletenessProvider()
+
+
+def get_variation_provider(
+    settings: Annotated[Settings, Depends(get_settings)],
+    http: Annotated[httpx2.Client, Depends(get_http_client)],
+) -> VariationProvider:
+    """The AI boundary for potential variation detection."""
+    if settings.ai_variation_provider == "http":
+        return HttpVariationProvider(http, settings.ai_service_url)
+    return MockVariationProvider()
 
 
 def get_evidence_repository(rest: UserSupabase) -> EvidenceRepository:
