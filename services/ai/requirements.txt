@@ -1,0 +1,5 @@
+# Runtime dependencies for the SubPay AI service.
+fastapi>=0.142,<1
+uvicorn[standard]>=0.54,<1
+pydantic-settings>=2.15,<3
+httpx2>=2.13,<3

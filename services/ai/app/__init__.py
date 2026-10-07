@@ -1,0 +1,2 @@
+"""SubPay AI service package."""
+

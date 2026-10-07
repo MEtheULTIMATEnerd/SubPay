@@ -1,0 +1,5 @@
+# Everything needed to run the AI service checks.
+-r requirements.txt
+pytest>=8
+ruff>=0.6
+
