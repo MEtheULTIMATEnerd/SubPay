@@ -249,12 +249,20 @@ def get_evidence_service(
     repository: Annotated[EvidenceRepository, Depends(get_evidence_repository)],
     storage: UserStorage,
     processor: Annotated[EvidenceProcessor, Depends(get_evidence_processor)],
+    contract_repository: Annotated[ContractRepository, Depends(get_contract_repository)],
+    matching_provider: Annotated[MatchingProvider, Depends(get_matching_provider)],
+    completeness_provider: Annotated[CompletenessProvider, Depends(get_completeness_provider)],
+    variation_provider: Annotated[VariationProvider, Depends(get_variation_provider)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> EvidenceService:
     return EvidenceService(
         repository,
         storage,
         processor,
+        contract_repository,
+        matching_provider,
+        completeness_provider,
+        variation_provider,
         signed_url_seconds=settings.signed_url_seconds,
         preview_url_seconds=settings.preview_url_seconds,
     )

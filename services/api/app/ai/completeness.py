@@ -100,4 +100,3 @@ def _status(assessment: str, has_missing_evidence: bool) -> CompletenessStatus:
     if assessment in {"strong", "partial"}:
         return "partial"
     return "weak"
-

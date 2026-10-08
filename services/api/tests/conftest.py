@@ -16,19 +16,25 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
 
+from app.ai.completeness import MockCompletenessProvider
 from app.ai.evidence import MockEvidenceProcessor
 from app.ai.extraction import MockExtractionProvider
+from app.ai.matching import MockMatchingProvider
+from app.ai.variations import MockVariationProvider
 from app.api.deps import (
     CurrentUser,
+    get_completeness_provider,
     get_contract_repository,
     get_evidence_processor,
     get_evidence_repository,
     get_extraction_provider,
     get_file_storage,
     get_invitation_lookup,
+    get_matching_provider,
     get_organisation_repository,
     get_platform_repository,
     get_token_verifier,
+    get_variation_provider,
 )
 from app.core import errors
 from app.core.config import Settings
@@ -193,6 +199,21 @@ def processor() -> MockEvidenceProcessor:
 
 
 @pytest.fixture
+def matching_provider() -> MockMatchingProvider:
+    return MockMatchingProvider()
+
+
+@pytest.fixture
+def completeness_provider() -> MockCompletenessProvider:
+    return MockCompletenessProvider()
+
+
+@pytest.fixture
+def variation_provider() -> MockVariationProvider:
+    return MockVariationProvider()
+
+
+@pytest.fixture
 def app(
     settings: Settings,
     verifier: TokenVerifier,
@@ -200,6 +221,9 @@ def app(
     storage: FakeStorage,
     extractor: MockExtractionProvider,
     processor: MockEvidenceProcessor,
+    matching_provider: MockMatchingProvider,
+    completeness_provider: MockCompletenessProvider,
+    variation_provider: MockVariationProvider,
 ) -> FastAPI:
     application = create_app(settings)
     application.include_router(_test_router(), prefix=settings.api_v1_prefix)
@@ -221,6 +245,9 @@ def app(
 
     application.dependency_overrides[get_evidence_repository] = evidence_for_caller
     application.dependency_overrides[get_evidence_processor] = lambda: processor
+    application.dependency_overrides[get_matching_provider] = lambda: matching_provider
+    application.dependency_overrides[get_completeness_provider] = lambda: completeness_provider
+    application.dependency_overrides[get_variation_provider] = lambda: variation_provider
 
     def organisation_for_caller(user: CurrentUser) -> FakeOrganisationRepository:
         return FakeOrganisationRepository(db, user.id)

@@ -9,7 +9,21 @@ from uuid import UUID, uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from app.ai.evidence import MockEvidenceProcessor
+from app.ai.completeness import CompletenessRequest, CompletenessResult, MockCompletenessProvider
+from app.ai.evidence import EvidenceUnderstandingResult, MockEvidenceProcessor
+from app.ai.extraction import AiUnavailableError
+from app.ai.matching import (
+    EvidenceSignals,
+    MatchingRequest,
+    MatchingResult,
+    MatchSuggestion,
+    MockMatchingProvider,
+)
+from app.ai.variations import (
+    MockVariationProvider,
+    VariationDetectionRequest,
+    VariationDetectionResult,
+)
 from app.core import errors
 from tests.conftest import MEMBER_A_ID, USER_B_ID, USER_ID
 from tests.fakes import FakeDatabase, FakeStorage
@@ -66,6 +80,67 @@ def listed(client: TestClient, headers: dict[str, str], project_id: str, **query
     response = client.get(f"{API}/projects/{project_id}/evidence", params=query, headers=headers)
     assert response.status_code == 200, response.text
     return response.json()["items"]
+
+
+def add_contract_row(
+    db: FakeDatabase,
+    project_id: str,
+    *,
+    processing_status: str = "ready",
+) -> UUID:
+    contract_id = uuid4()
+    now = datetime.now(timezone.utc)
+    db.contracts[contract_id] = {
+        "id": contract_id,
+        "project_id": UUID(project_id),
+        "original_filename": "Subcontract.pdf",
+        "storage_path": f"contracts/{project_id}/{contract_id}/original.pdf",
+        "mime_type": "application/pdf",
+        "size_bytes": 1234,
+        "page_count": None,
+        "processing_status": processing_status,
+        "error": None,
+        "uploaded_by": UUID(USER_ID),
+        "created_at": now,
+        "updated_at": now,
+        "processed_at": now if processing_status == "ready" else None,
+    }
+    return contract_id
+
+
+def add_contract_item_row(
+    db: FakeDatabase,
+    contract_id: UUID,
+    *,
+    item_code: str = "2.1",
+    description: str = "Formwork, slab edges",
+    review_status: str = "confirmed",
+) -> UUID:
+    item_id = uuid4()
+    now = datetime.now(timezone.utc)
+    db.contract_items[item_id] = {
+        "id": item_id,
+        "contract_id": contract_id,
+        "item_code": item_code,
+        "description": description,
+        "quantity": 180,
+        "unit": "m²",
+        "rate": 75,
+        "amount": 13500,
+        "conditions": None,
+        "notice_requirement": None,
+        "due_date": None,
+        "extraction_confidence": 0.9,
+        "review_status": review_status,
+        "edited_by_human": False,
+        "reviewed_by": UUID(USER_ID) if review_status == "confirmed" else None,
+        "source_reference": None,
+        "extracted_values": {},
+        "sort_order": len(db.contract_items),
+        "created_at": now,
+        "updated_at": now,
+    }
+    return item_id
 
 
 @pytest.fixture
@@ -701,7 +776,13 @@ def test_the_ai_service_is_given_the_details_and_a_link_to_the_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     requests = []
-    monkeypatch.setattr(processor, "process", requests.append)
+    original = processor.understand
+
+    def record(request: Any) -> EvidenceUnderstandingResult:
+        requests.append(request)
+        return original(request)
+
+    monkeypatch.setattr(processor, "understand", record)
 
     photo = added(
         client,
@@ -729,6 +810,272 @@ def test_the_ai_service_is_given_the_details_and_a_link_to_the_file(
     assert str(second.evidence_id) == note["id"]
     assert second.document_url is None
     assert second.mime_type is None
+
+
+def test_evidence_processing_runs_the_transient_ai_pipeline(
+    client: TestClient,
+    as_user: Headers,
+    project_a: str,
+    db: FakeDatabase,
+    processor: MockEvidenceProcessor,
+    matching_provider: MockMatchingProvider,
+    completeness_provider: MockCompletenessProvider,
+    variation_provider: MockVariationProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready_contract = add_contract_row(db, project_a)
+    confirmed_id = add_contract_item_row(db, ready_contract)
+    add_contract_item_row(db, ready_contract, item_code="2.2", review_status="draft")
+    blocked_contract = add_contract_row(db, project_a, processing_status="failed")
+    add_contract_item_row(db, blocked_contract, item_code="9.1")
+
+    calls: list[str] = []
+    matching_requests: list[MatchingRequest] = []
+    completeness_requests: list[CompletenessRequest] = []
+    variation_requests: list[VariationDetectionRequest] = []
+    signals = EvidenceSignals(
+        objects=["formwork"],
+        activities=["concrete pour"],
+        extracted_text="Level 3 formwork pour complete.",
+        location="Level 3",
+    )
+    suggestion = MatchSuggestion(
+        contract_item_id=confirmed_id,
+        confidence=0.91,
+        assessment="strong",
+        reason="Evidence supports the confirmed item.",
+    )
+
+    def understand(request: Any) -> EvidenceUnderstandingResult:
+        calls.append("understanding")
+        return EvidenceUnderstandingResult(
+            evidence_id=request.evidence_id,
+            signals=signals,
+            confidence=0.82,
+        )
+
+    def match(request: MatchingRequest) -> MatchingResult:
+        calls.append("matching")
+        matching_requests.append(request)
+        return MatchingResult(evidence_id=request.evidence_id, matches=[suggestion])
+
+    def assess(request: CompletenessRequest) -> CompletenessResult:
+        calls.append("completeness")
+        completeness_requests.append(request)
+        return CompletenessResult(
+            contract_item_id=request.contract_item_id,
+            status="strong",
+            confidence=0.91,
+            reason="Strong AI evidence support.",
+        )
+
+    def detect(request: VariationDetectionRequest) -> VariationDetectionResult:
+        calls.append("variation")
+        variation_requests.append(request)
+        return VariationDetectionResult(
+            potential_variation=False,
+            confidence=0.5,
+            reason="No potential variation detected.",
+            review_required=False,
+        )
+
+    monkeypatch.setattr(processor, "understand", understand)
+    monkeypatch.setattr(matching_provider, "match", match)
+    monkeypatch.setattr(completeness_provider, "assess", assess)
+    monkeypatch.setattr(variation_provider, "detect", detect)
+
+    evidence = added(
+        client,
+        as_user(),
+        project_a,
+        title="Level 3 slab pour",
+        description="Formwork pour complete.",
+        metadata={"location": "Level 3"},
+    )
+
+    assert (
+        client.get(f"{API}/evidence/{evidence['id']}", headers=as_user()).json()[
+            "processing_status"
+        ]
+        == "ready"
+    )
+    assert calls == ["understanding", "matching", "completeness", "variation"]
+    assert [item.contract_item_id for item in matching_requests[0].contract_items] == [confirmed_id]
+    assert completeness_requests[0].contract_item_id == confirmed_id
+    assert completeness_requests[0].matches == [suggestion]
+    assert variation_requests[0].signals == signals
+    assert variation_requests[0].matches == [suggestion]
+    assert set(db.evidence[UUID(evidence["id"])]) == {
+        "storage_path",
+        "original_filename",
+        "mime_type",
+        "size_bytes",
+        "evidence_type",
+        "captured_at",
+        "description",
+        "metadata",
+        "id",
+        "project_id",
+        "sequence_number",
+        "code",
+        "uploaded_by",
+        "processing_status",
+        "archived",
+        "created_at",
+        "updated_at",
+        "title",
+    }
+
+
+def test_evidence_processing_handles_empty_confirmed_contract_items(
+    client: TestClient,
+    as_user: Headers,
+    project_a: str,
+    processor: MockEvidenceProcessor,
+    matching_provider: MockMatchingProvider,
+    completeness_provider: MockCompletenessProvider,
+    variation_provider: MockVariationProvider,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    completeness_requests: list[CompletenessRequest] = []
+    matching_requests: list[MatchingRequest] = []
+    variation_requests: list[VariationDetectionRequest] = []
+    signals = EvidenceSignals(extracted_text="Phone call with the super.")
+
+    monkeypatch.setattr(
+        processor,
+        "understand",
+        lambda request: EvidenceUnderstandingResult(
+            evidence_id=request.evidence_id, signals=signals, confidence=0.75
+        ),
+    )
+
+    def match(request: MatchingRequest) -> MatchingResult:
+        matching_requests.append(request)
+        return MatchingResult(evidence_id=request.evidence_id, matches=[])
+
+    monkeypatch.setattr(matching_provider, "match", match)
+    monkeypatch.setattr(completeness_provider, "assess", completeness_requests.append)
+    monkeypatch.setattr(
+        variation_provider,
+        "detect",
+        lambda request: (
+            variation_requests.append(request)
+            or VariationDetectionResult(
+                potential_variation=False,
+                confidence=0.5,
+                reason="No potential variation detected.",
+                review_required=False,
+            )
+        ),
+    )
+
+    evidence = added(client, as_user(), project_a, file=None, description="Phone call.")
+
+    assert (
+        client.get(f"{API}/evidence/{evidence['id']}", headers=as_user()).json()[
+            "processing_status"
+        ]
+        == "ready"
+    )
+    assert matching_requests[0].contract_items == []
+    assert completeness_requests == []
+    assert variation_requests[0].matches == []
+
+
+@pytest.mark.parametrize(
+    "failing_stage",
+    ["understanding", "matching", "completeness", "variation"],
+)
+def test_evidence_processing_marks_failed_when_any_ai_provider_fails(
+    client: TestClient,
+    as_user: Headers,
+    project_a: str,
+    db: FakeDatabase,
+    processor: MockEvidenceProcessor,
+    matching_provider: MockMatchingProvider,
+    completeness_provider: MockCompletenessProvider,
+    variation_provider: MockVariationProvider,
+    monkeypatch: pytest.MonkeyPatch,
+    failing_stage: str,
+) -> None:
+    contract_id = add_contract_row(db, project_a)
+    item_id = add_contract_item_row(db, contract_id)
+    signals = EvidenceSignals(extracted_text="Formwork pour complete.")
+    suggestion = MatchSuggestion(
+        contract_item_id=item_id,
+        confidence=0.91,
+        assessment="strong",
+        reason="Evidence supports the confirmed item.",
+    )
+
+    def fail() -> None:
+        raise AiUnavailableError()
+
+    def understand(request: Any) -> EvidenceUnderstandingResult:
+        if failing_stage == "understanding":
+            fail()
+        return EvidenceUnderstandingResult(
+            evidence_id=request.evidence_id,
+            signals=signals,
+            confidence=0.82,
+        )
+
+    def match(request: MatchingRequest) -> MatchingResult:
+        if failing_stage == "matching":
+            fail()
+        return MatchingResult(evidence_id=request.evidence_id, matches=[suggestion])
+
+    def assess(request: CompletenessRequest) -> CompletenessResult:
+        if failing_stage == "completeness":
+            fail()
+        return CompletenessResult(
+            contract_item_id=request.contract_item_id,
+            status="strong",
+            confidence=0.91,
+            reason="Strong AI evidence support.",
+        )
+
+    def detect(request: VariationDetectionRequest) -> VariationDetectionResult:
+        if failing_stage == "variation":
+            fail()
+        return VariationDetectionResult(
+            potential_variation=False,
+            confidence=0.5,
+            reason="No potential variation detected.",
+            review_required=False,
+        )
+
+    monkeypatch.setattr(processor, "understand", understand)
+    monkeypatch.setattr(matching_provider, "match", match)
+    monkeypatch.setattr(completeness_provider, "assess", assess)
+    monkeypatch.setattr(variation_provider, "detect", detect)
+
+    evidence = added(client, as_user(), project_a)
+
+    assert (
+        client.get(f"{API}/evidence/{evidence['id']}", headers=as_user()).json()[
+            "processing_status"
+        ]
+        == "failed"
+    )
+
+
+def test_evidence_processing_with_missing_optional_metadata(
+    client: TestClient,
+    as_user: Headers,
+    project_a: str,
+) -> None:
+    evidence = added(
+        client,
+        as_user(),
+        project_a,
+        file=None,
+        title=None,
+        description="Site note with no file or metadata.",
+    )
+    stored = client.get(f"{API}/evidence/{evidence['id']}", headers=as_user()).json()
+    assert stored["processing_status"] == "ready"
 
 
 def test_evidence_is_kept_when_the_ai_service_is_down_and_can_be_retried(
@@ -768,10 +1115,10 @@ def test_an_unexpected_processing_error_is_recorded_as_failed(
     processor: MockEvidenceProcessor,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def explode(request: Any) -> None:
+    def explode(request: Any) -> EvidenceUnderstandingResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(processor, "process", explode)
+    monkeypatch.setattr(processor, "understand", explode)
     evidence = added(client, as_user(), project_a)
     stored = client.get(f"{API}/evidence/{evidence['id']}", headers=as_user()).json()
     assert stored["processing_status"] == "failed"

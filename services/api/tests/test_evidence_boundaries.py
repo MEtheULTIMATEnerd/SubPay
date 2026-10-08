@@ -11,7 +11,12 @@ from uuid import UUID
 import httpx2
 import pytest
 
-from app.ai.evidence import EvidenceRequest, HttpEvidenceProcessor, MockEvidenceProcessor
+from app.ai.evidence import (
+    EvidenceRequest,
+    EvidenceUnderstandingResult,
+    HttpEvidenceProcessor,
+    MockEvidenceProcessor,
+)
 from app.ai.extraction import AiUnavailableError
 from app.api.deps import get_evidence_processor
 from app.core.config import Settings
@@ -325,14 +330,30 @@ def http_processor(handler: Handler) -> tuple[HttpEvidenceProcessor, list[httpx2
 def test_the_mock_processor_accepts_everything_until_told_otherwise() -> None:
     processor = MockEvidenceProcessor()
     assert processor.process(REQUEST) is None
+    result = processor.understand(REQUEST)
+    assert isinstance(result, EvidenceUnderstandingResult)
+    assert result.evidence_id == EVIDENCE_ID
+    assert result.signals.extracted_text == "Level 3 slab pour East side poured."
     processor.available = False
     with pytest.raises(AiUnavailableError):
-        processor.process(REQUEST)
+        processor.understand(REQUEST)
 
 
 def test_the_http_processor_posts_the_evidence_to_the_ai_service() -> None:
-    processor, requests = http_processor(lambda r: httpx2.Response(202, json={"status": "ok"}))
-    assert processor.process(REQUEST) is None
+    response = {
+        "evidence_id": str(EVIDENCE_ID),
+        "signals": {
+            "objects": ["concrete"],
+            "activities": ["concrete pour"],
+            "extracted_text": "Level 3 slab pour East side poured.",
+            "location": "Level 3",
+            "date": "2026-09-14T01:30:00Z",
+            "other_signals": {"source": "mobile_upload"},
+        },
+        "confidence": 0.82,
+    }
+    processor, requests = http_processor(lambda r: httpx2.Response(200, json=response))
+    result = processor.understand(REQUEST)
 
     (request,) = requests
     assert request.method == "POST"
@@ -351,6 +372,9 @@ def test_the_http_processor_posts_the_evidence_to_the_ai_service() -> None:
     }
     # The user's access token is never passed on to the AI service.
     assert "authorization" not in request.headers
+    assert result.signals.objects == ["concrete"]
+    assert result.confidence == 0.82
+    assert processor.process(REQUEST) is None
 
 
 def _timeout(request: httpx2.Request) -> httpx2.Response:
@@ -368,12 +392,26 @@ def _refused(request: httpx2.Request) -> httpx2.Response:
         _refused,
         lambda r: httpx2.Response(500, text="Internal Server Error"),
         lambda r: httpx2.Response(404, json={"detail": "Not Found"}),
+        lambda r: httpx2.Response(200, text="not json"),
+        lambda r: httpx2.Response(200, json={"evidence_id": str(EVIDENCE_ID)}),
+        lambda r: httpx2.Response(
+            200,
+            json={
+                "evidence_id": str(UUID("eeeeeeee-0000-4000-8000-000000000002")),
+                "signals": {},
+                "confidence": 0.82,
+            },
+        ),
+        lambda r: httpx2.Response(
+            200,
+            json={"evidence_id": str(EVIDENCE_ID), "signals": {}, "confidence": 8},
+        ),
     ],
 )
 def test_any_ai_service_failure_is_one_error(handler: Handler) -> None:
     processor, _ = http_processor(handler)
     with pytest.raises(AiUnavailableError):
-        processor.process(REQUEST)
+        processor.understand(REQUEST)
 
 
 @pytest.mark.parametrize(
