@@ -42,4 +42,3 @@ class ExtractionResult(BaseModel):
         # The item model catches blank required fields; this hook keeps a named
         # validation location for future cross-item checks without changing callers.
         return self
-

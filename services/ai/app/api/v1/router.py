@@ -33,7 +33,7 @@ def health(settings: Settings = Depends(get_settings)) -> dict[str, str]:
         "service": "subpay-ai",
         "version": settings.version,
         "environment": settings.environment,
-        "provider_mode": settings.provider_mode,
+        "vision_provider": settings.vision_provider,
     }
 
 
@@ -91,4 +91,3 @@ def detect_variation(
     service: VariationDetectionService = Depends(get_variation_service),
 ) -> VariationDetectionResult:
     return service.detect(body)
-

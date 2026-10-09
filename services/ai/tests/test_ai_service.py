@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
+from app.api.v1.deps import get_evision_service
+from app.core.config import Settings, get_settings
 from app.main import create_app
 from app.providers.base import EmbeddingProvider, LLMProvider, VisionProvider
 from app.providers.mock import MockEmbeddingProvider, MockLLMProvider, MockVisionProvider
@@ -14,6 +16,7 @@ from app.schemas.evidence import EvidenceSignals, EvidenceUnderstandingRequest
 from app.schemas.extraction import ExtractedContractItem, ExtractionRequest
 from app.schemas.matching import MatchingContractItem, MatchingResult, MatchSuggestion
 from app.schemas.variations import VariationDetectionResult
+from app.services.evidence import EvidenceUnderstandingService
 from app.services.extraction import MockExtractionProvider
 
 API = "/ai/v1"
@@ -26,6 +29,22 @@ ITEM_ID = UUID("11111111-0000-4000-8000-000000000001")
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(create_app())
+
+
+@pytest.fixture
+def mock_vision_client() -> TestClient:
+    """TestClient with vision provider overridden to MockVisionProvider."""
+    app = create_app()
+    # Override the evidence service to use mock vision provider
+    mock_vision = MockVisionProvider()
+    mock_service = EvidenceUnderstandingService(mock_vision)
+    app.dependency_overrides[get_evision_service] = lambda: mock_service
+    # Override settings to return mock vision_provider
+    mock_settings = Settings(_env_file=__import__("pathlib").Path("/nonexistent/.env"))
+    app.dependency_overrides[get_settings] = lambda: mock_settings
+    client = TestClient(app)
+    yield client
+    app.dependency_overrides.clear()
 
 
 def extraction_request(filename: str = "Subcontract_HumeSt_Formwork.pdf") -> dict:
@@ -73,15 +92,15 @@ def match_suggestion(confidence: float = 0.91, assessment: str = "strong") -> di
     }
 
 
-def test_health(client: TestClient) -> None:
-    response = client.get(f"{API}/health")
+def test_health(mock_vision_client: TestClient) -> None:
+    response = mock_vision_client.get(f"{API}/health")
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
         "service": "subpay-ai",
         "version": "0.1.0",
         "environment": "development",
-        "provider_mode": "mock",
+        "vision_provider": "mock",
     }
 
 
@@ -128,8 +147,10 @@ def test_evidence_signals_schema() -> None:
     assert evidence_signals.other_signals["evidence_type"] == "photo"
 
 
-def test_evidence_understanding_endpoint(client: TestClient) -> None:
-    response = client.post(f"{API}/evidence/{EVIDENCE_ID}/understand", json=evidence_request())
+def test_evidence_understanding_endpoint(mock_vision_client: TestClient) -> None:
+    response = mock_vision_client.post(
+        f"{API}/evidence/{EVIDENCE_ID}/understand", json=evidence_request()
+    )
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["evidence_id"] == str(EVIDENCE_ID)
@@ -235,7 +256,8 @@ def test_provider_abstraction() -> None:
     bundle: NeedsProviders = Bundle()
     assert bundle.llm.complete("Hello") == bundle.llm.complete("hello")
     assert bundle.embeddings.embed("concrete") == bundle.embeddings.embed("CONCRETE")
-    assert "formwork" in bundle.vision.describe(document_url=None, text_hint="Formwork photo")
+    result = bundle.vision.describe(document_url=None, text_hint="Formwork photo")
+    assert "formwork" in result.get("objects_certain", [])
 
 
 def test_mock_provider_behaviour() -> None:

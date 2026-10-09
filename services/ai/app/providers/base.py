@@ -17,5 +17,6 @@ class EmbeddingProvider(Protocol):
 
 
 class VisionProvider(Protocol):
-    def describe(self, *, document_url: str | None, text_hint: str = "") -> list[str]: ...
-
+    def describe(
+        self, *, document_url: str | None, text_hint: str = ""
+    ) -> dict[str, list[str]]: ...

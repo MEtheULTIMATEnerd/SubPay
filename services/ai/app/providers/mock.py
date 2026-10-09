@@ -22,9 +22,9 @@ class MockEmbeddingProvider:
 
 
 class MockVisionProvider:
-    def describe(self, *, document_url: str | None, text_hint: str = "") -> list[str]:
+    def describe(self, *, document_url: str | None, text_hint: str = "") -> dict[str, list[str]]:
         text = text_hint.lower()
-        objects: list[str] = []
+        objects_certain: list[str] = []
         for keyword, label in [
             ("formwork", "formwork"),
             ("conduit", "electrical conduit"),
@@ -35,7 +35,12 @@ class MockVisionProvider:
             ("photo", "site photo"),
         ]:
             if keyword in text:
-                objects.append(label)
-        if document_url and not objects:
-            objects.append("source document")
-        return objects
+                objects_certain.append(label)
+        if document_url and not objects_certain:
+            objects_certain.append("source document")
+        return {
+            "objects_certain": objects_certain,
+            "objects_possible": [],
+            "activities_certain": [],
+            "activities_possible": [],
+        }

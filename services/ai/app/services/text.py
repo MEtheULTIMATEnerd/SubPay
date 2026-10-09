@@ -24,4 +24,3 @@ def tokens(text: str) -> list[str]:
     normalized = re.sub(r"[^a-z0-9 ]+", " ", text.lower())
     words = normalized.split()
     return sorted({word.rstrip("s") for word in words if len(word) > 1 and word not in STOP_WORDS})
-

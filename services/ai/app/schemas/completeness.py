@@ -18,4 +18,3 @@ class CompletenessResult(BaseModel):
     status: CompletenessStatus
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(min_length=1, max_length=1000)
-

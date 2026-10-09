@@ -36,4 +36,3 @@ class MatchSuggestion(BaseModel):
 class MatchingResult(BaseModel):
     evidence_id: UUID
     matches: list[MatchSuggestion]
-

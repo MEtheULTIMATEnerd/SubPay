@@ -39,4 +39,3 @@ class EvidenceUnderstandingResult(BaseModel):
     evidence_id: UUID
     signals: EvidenceSignals
     confidence: float = Field(ge=0, le=1)
-
