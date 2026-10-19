@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
 import { read, readiness } from "@/lib/api";
+import { LIVE } from "@/lib/env";
 import { setProjectStatus, updateProject } from "@/lib/projects";
 import type { Project } from "@/lib/types";
 import { ProjectForm } from "@/components/projects";
@@ -37,7 +38,7 @@ export default function ProjectOverview() {
   const evidence = read.evidence(db, p.id).filter((e) => !e.archived);
   const matches = read.matches(db, p.id);
   const claim = read.claims(db, p.id).at(-1);
-  const r = claim ? readiness(db, claim.id) : null;
+  const r = !LIVE && claim ? readiness(db, claim.id) : null;
   const confirmedItems = items.filter((i) => i.review_status === "confirmed").length;
 
   // The MVP journey, with live status for each step.
@@ -46,7 +47,7 @@ export default function ProjectOverview() {
     ["Review claim schedule", `${confirmedItems} of ${items.length} items confirmed`, items.length > 0 && confirmedItems === items.length, contracts[0] ? `${base}/contracts/${contracts[0].id}/items` : `${base}/contracts`],
     ["Capture evidence", `${evidence.length} records`, evidence.length > 0, `${base}/evidence`],
     ["Confirm AI matches", `${matches.filter((m) => m.status === "suggested").length} awaiting review`, matches.length > 0 && !matches.some((m) => m.status === "suggested"), `${base}/review`],
-    ["Check claim readiness", r ? `${r.coverage}% evidence support` : "No claim yet", !!r && r.coverage >= 80, claim ? `${base}/claims/${claim.id}` : `${base}/claims`],
+    ["Check claim readiness", LIVE ? "Not available yet" : r ? `${r.coverage}% evidence support` : "No claim yet", !!r && r.rows.length > 0 && r.counts.strong === r.rows.length && r.pendingMatches === 0, claim ? `${base}/claims/${claim.id}` : `${base}/claims`],
     ["Export evidence package", claim?.status === "exported" ? "Exported" : "Not yet exported", claim?.status === "exported", claim ? `${base}/claims/${claim.id}/export` : `${base}/claims`],
   ];
 

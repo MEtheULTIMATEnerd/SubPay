@@ -6,13 +6,14 @@
 //            features still on mock data) can read it at once.
 // demo mode: the original prototype behaviour, simulated in lib/api.ts.
 //
-// Matching evidence to contract items (F08 to F10) is still mock data in both
-// modes. In live mode it runs locally once the API reports the evidence ready.
+// Matching evidence to contract items (F08 to F10) is handled by the API in live mode
+// and by the mock in demo mode.
 import * as mock from "./api";
 import { LIVE } from "./env";
 import { ApiError, isApiError } from "./errors";
 import { apiFetch } from "./http";
 import { commit, getDb } from "./store";
+import { refreshMatches } from "./matches";
 import type { Evidence, EvidenceType } from "./types";
 
 export type EvidenceInput = Omit<mock.EvidenceInput, "file"> & { file: File | null };
@@ -61,6 +62,7 @@ export const EVIDENCE_TYPES_MESSAGE =
 // Signed preview links are kept in memory only: they expire, and they must not
 // be written to the browser's storage with the rest of the local copy.
 const previews = new Map<string, string>();
+const previewRefreshedAt = new Map<string, number>();
 
 function toLocal(record: ApiEvidence): Evidence {
   const { preview_url, ...rest } = record;
@@ -113,37 +115,16 @@ export async function refreshEvidence(projectId: string): Promise<void> {
   commit((d) => {
     d.evidence = [...d.evidence.filter((e) => e.project_id !== projectId), ...evidence];
   });
-  evidence.filter((e) => e.processing_status === "processing").forEach((e) => watchProcessing(e.id, true));
-}
-
-/** A fresh, short-lived link to the stored file. Null for a written note, and in demo mode, where files are not stored. */
-export async function getEvidenceDownloadUrl(evidenceId: string): Promise<string | null> {
-  if (!LIVE) return null;
-  const record = await apiFetch<ApiEvidence>(`/evidence/${evidenceId}`);
-  return record.download_url ?? null;
-}
-
-const previewRefreshedAt = new Map<string, number>();
-
-/** A preview image failed to load, most likely because its link expired: fetch fresh ones (at most once a minute). */
-export function previewFailed(projectId: string) {
-  if (!LIVE) return;
-  const last = previewRefreshedAt.get(projectId) ?? 0;
-  if (Date.now() - last < PREVIEW_RETRY_MS) return;
-  previewRefreshedAt.set(projectId, Date.now());
-  void refreshEvidence(projectId).catch(() => undefined);
+  // Also refresh matches for this project
+  await refreshMatches(projectId);
 }
 
 // ---------- upload ----------
-/** Returns the new record's id. AI processing then runs on its own; the page updates when it finishes. */
-export async function uploadEvidence(projectId: string, input: EvidenceInput, { autoMatch = true, onProgress }: UploadOptions = {}): Promise<string> {
-  // The same rules in both modes. In live mode the API also checks the file's real contents.
-  const { file } = input;
-  if (!file && !input.description.trim()) throw new ApiError(422, "Add a file or a written note", "validation_error");
-  if (file && file.size > mock.MAX_EVIDENCE_BYTES) throw new ApiError(413, "Evidence files must be 50 MB or smaller", "payload_too_large");
-  if (file && !MIME_TYPES.includes(file.type) && !EXTENSIONS.test(file.name)) throw new ApiError(415, EVIDENCE_TYPES_MESSAGE, "unsupported_media_type");
-  checkText(input.title, input.description, { titleRequired: false });
-  checkTags(input.tags);
+/** Upload evidence (file, written note, or both). Returns the new evidence's id. */
+export async function uploadEvidence(projectId: string, input: EvidenceInput, opts: UploadOptions = {}): Promise<string> {
+  const { autoMatch = true, onProgress } = opts;
+  validateUpload(input);
+
   if (!LIVE) {
     const id = mock.uploadEvidence(projectId, input, { autoMatch });
     onProgress?.(1); // nothing is sent anywhere in demo mode
@@ -152,7 +133,7 @@ export async function uploadEvidence(projectId: string, input: EvidenceInput, { 
 
   const author = getDb().profiles.find((p) => p.id === getDb().session?.profile_id)?.full_name;
   const form = new FormData();
-  if (file) form.append("file", file, file.name);
+  if (input.file) form.append("file", input.file, input.file.name);
   if (input.title.trim()) form.append("title", input.title.trim());
   form.append("description", input.description.trim());
   form.append("evidence_type", input.evidence_type);
@@ -160,11 +141,11 @@ export async function uploadEvidence(projectId: string, input: EvidenceInput, { 
   // uploaded_by, set by the API, is the record of who added it. `author` is only the name to display.
   form.append("metadata", JSON.stringify({ location: input.location, source: input.source ?? "desktop_upload", tags: input.tags ?? [], ...(author ? { author } : {}) }));
 
-  const record = await apiFetch<ApiEvidence>(`/projects/${projectId}/evidence`, { method: "POST", form, onUploadProgress: file ? onProgress : undefined });
+  const record = await apiFetch<ApiEvidence>(`/projects/${projectId}/evidence`, { method: "POST", form, onUploadProgress: input.file ? onProgress : undefined });
   onProgress?.(1);
   storeEvidence(record);
   mock.logAudit(projectId, "evidence.uploaded", "evidence", record.id, { title: record.title, type: record.evidence_type });
-  watchProcessing(record.id, autoMatch);
+  watchProcessing(record.id, projectId);
   return record.id;
 }
 
@@ -174,11 +155,28 @@ function checkText(title: string, description: string, { titleRequired }: { titl
   if (description.trim().length > 5000) throw new ApiError(422, "Description must be 5000 characters or fewer", "validation_error");
 }
 
+function validateUpload(input: EvidenceInput) {
+  checkText(input.title, input.description, { titleRequired: false });
+  checkTags(input.tags);
+  if (!input.file && !input.description.trim()) {
+    throw new ApiError(422, "Add a file or a written note", "validation_error");
+  }
+  if (!input.file) return;
+  const hasAllowedExtension = EXTENSIONS.test(input.file.name);
+  const hasAllowedMimeType = MIME_TYPES.includes(input.file.type);
+  if (!hasAllowedExtension && !hasAllowedMimeType) {
+    throw new ApiError(415, EVIDENCE_TYPES_MESSAGE, "unsupported_media_type");
+  }
+  if (input.file.size > 50 * 1024 * 1024) {
+    throw new ApiError(413, "Evidence files must be 50 MB or smaller", "payload_too_large");
+  }
+}
+
 // ---------- AI processing ----------
 const watching = new Set<string>();
 
-/** Follow a record until the API reports it ready or failed, then (optionally) suggest contract items. */
-function watchProcessing(evidenceId: string, autoMatch: boolean) {
+/** Follow a record until the API reports it ready or failed. */
+function watchProcessing(evidenceId: string, projectId: string) {
   if (watching.has(evidenceId)) return;
   watching.add(evidenceId);
   let polls = 0;
@@ -192,8 +190,7 @@ function watchProcessing(evidenceId: string, autoMatch: boolean) {
       if (record.processing_status === "ready" || record.processing_status === "failed") {
         storeEvidence(record);
         watching.delete(evidenceId);
-        // Matching is still simulated in the browser (see the note at the top of this file).
-        if (record.processing_status === "ready" && autoMatch && getDb().settings.ai_available) mock.runMatching(evidenceId);
+        if (record.processing_status === "ready") await refreshMatches(projectId);
         return;
       }
     } catch (err) {
@@ -216,11 +213,14 @@ function watchProcessing(evidenceId: string, autoMatch: boolean) {
 export async function rerunMatching(evidenceId: string): Promise<void> {
   if (!LIVE) return mock.runMatching(evidenceId);
   const evidence = requireStored(evidenceId);
-  if (evidence.processing_status === "ready") return mock.runMatching(evidenceId);
+  if (evidence.processing_status === "ready") {
+    await refreshMatches(evidence.project_id);
+    return;
+  }
   if (evidence.processing_status !== "processing") {
     storeEvidence(await apiFetch<ApiEvidence>(`/evidence/${evidenceId}/process`, { method: "POST" }));
   }
-  watchProcessing(evidenceId, true);
+  watchProcessing(evidenceId, evidence.project_id);
 }
 
 // ---------- editing and archiving ----------
@@ -261,6 +261,23 @@ export async function setEvidenceArchived(evidenceId: string, archived: boolean)
   const current = requireStored(evidenceId);
   storeEvidence(await apiFetch<ApiEvidence>(`/evidence/${evidenceId}`, { method: "PATCH", body: { archived } }));
   mock.logAudit(current.project_id, archived ? "evidence.archived" : "evidence.restored", "evidence", evidenceId, { evidence: current.code });
+}
+
+/** Get a short-lived download URL for the stored file. Null in demo mode or if no file. */
+export async function getEvidenceDownloadUrl(evidenceId: string): Promise<string | null> {
+  if (!LIVE) return null;
+  const record = await apiFetch<ApiEvidence>(`/evidence/${evidenceId}`);
+  return record.download_url ?? null;
+}
+
+/** Check if preview generation failed (based on age of preview_url). */
+export function previewFailed(projectId: string): boolean {
+  if (!LIVE) return false;
+  const refreshed = previewRefreshedAt.get(projectId);
+  if (refreshed !== undefined && Date.now() - refreshed < PREVIEW_RETRY_MS) return false;
+  previewRefreshedAt.set(projectId, Date.now());
+  setTimeout(() => void refreshEvidence(projectId), 0);
+  return true;
 }
 
 export type { EvidenceType };

@@ -3,10 +3,12 @@
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { Suspense, useState } from "react";
 import { useData } from "@/lib/store";
-import { completeness, linkEvidence, read, readiness, reviewMatch } from "@/lib/api";
+import { completeness, read, readiness } from "@/lib/api";
+import { LIVE } from "@/lib/env";
+import { confirmMatch, rejectMatch, reopenMatch, linkEvidence as linkEvidenceLive } from "@/lib/matches";
 import type { ContractItem, Db, EvidenceMatch } from "@/lib/types";
 import {
-  AiBadge, Banner, Dialog, EmptyState, EvidenceIcon, Icon, Notice, Page, PageHeader, Progress, StateBadge, cx, fmtDateTime, money, stateColor,
+  AiBadge, Banner, Dialog, EmptyState, EvidenceIcon, Icon, Notice, Page, PageHeader, Progress, StateBadge, cx, money, stateColor,
 } from "@/components/ui";
 
 export default function ReviewPage() {
@@ -18,7 +20,6 @@ function Review() {
   const router = useRouter();
   const params = useSearchParams();
   const { projectId } = useParams<{ projectId: string }>();
-  const me = read.me(db)!;
 
   const items = read.projectItems(db, projectId)
     .filter((i) => i.review_status !== "rejected")
@@ -26,7 +27,7 @@ function Review() {
   const evidence = read.evidence(db, projectId).filter((e) => !e.archived);
   const matches = read.matches(db, projectId);
   const claim = read.claims(db, projectId).at(-1);
-  const r = claim ? readiness(db, claim.id) : null;
+  const r = !LIVE && claim ? readiness(db, claim.id) : null;
 
   const fromEvidence = params.get("evidence") && matches.find((m) => m.evidence_id === params.get("evidence"))?.contract_item_id;
   const firstPending = items.find((i) => matches.some((m) => m.contract_item_id === i.id && m.status === "suggested"));
@@ -38,7 +39,36 @@ function Review() {
 
   const [changing, setChanging] = useState<EvidenceMatch | null>(null);
   const [linking, setLinking] = useState(false);
-  const decide = (id: string, status: EvidenceMatch["status"]) => { setPinned(itemId); reviewMatch(id, status); };
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const decide = async (id: string, status: EvidenceMatch["status"]) => {
+    setPinned(itemId);
+    setBusy(id);
+    try {
+      if (status === "confirmed") await confirmMatch(projectId, id);
+      else if (status === "rejected") await rejectMatch(projectId, id);
+      else if (status === "suggested") await reopenMatch(projectId, id);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to update match. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleLink = async (evidenceId: string, contractItemId: string, replacesMatchId?: string) => {
+    setBusy(evidenceId);
+    try {
+      await linkEvidenceLive(projectId, evidenceId, contractItemId, replacesMatchId);
+      setLinking(false);
+      setChanging(null);
+    } catch (e) {
+      console.error(e);
+      alert("Failed to link evidence. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  };
 
   if (!item)
     return <Page><EmptyState title="Nothing to review yet" body="Confirm your claim schedule and upload evidence first. SubPay will then suggest which evidence supports which line." /></Page>;
@@ -50,9 +80,6 @@ function Review() {
   const approved = lineMatches.filter((m) => m.status === "confirmed").length;
   const pending = lineMatches.filter((m) => m.status === "suggested");
   const claimed = r?.rows.find((x) => x.item.id === item.id)?.claimItem.claimed_amount;
-  const idx = items.indexOf(item);
-  const next = items.slice(idx + 1).concat(items.slice(0, idx)).find((i) => matches.some((m) => m.contract_item_id === i.id && m.status === "suggested")) ?? items[idx + 1];
-  const left = items.filter((i) => matches.some((m) => m.contract_item_id === i.id && m.status === "suggested")).length;
   const unlinked = evidence.filter((e) => !matches.some((m) => m.evidence_id === e.id && m.status !== "rejected"));
 
   return (
@@ -74,7 +101,7 @@ function Review() {
       />
 
       {!db.settings.ai_available && (
-        <div className="mb-6"><Notice title="AI analysis unavailable">You can continue reviewing evidence manually. Existing suggestions are still shown; new uploads won’t be matched until AI is back.</Notice></div>
+        <div className="mb-6"><Notice title="AI analysis unavailable">You can continue reviewing evidence manually. Existing suggestions are still shown; new uploads won&apos;t be matched until AI is back.</Notice></div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,4fr)]">
@@ -99,98 +126,111 @@ function Review() {
                 </Notice>
               </div>
             )}
-            {item.notice_requirement && (
-              <p className="mt-6 flex gap-2 border-t border-line pt-4 text-sm text-amber"><Icon.clock className="h-5 w-5 shrink-0" />Potential requirement — review contract: {item.notice_requirement}</p>
-            )}
-          </section>
 
-          {next && next.id !== item.id && (
-            <button onClick={() => go(next.id)} className="card block w-full p-6 text-left hover:border-sage">
-              <p className="font-semibold">Next line: {next.item_code} {next.description}</p>
-              <p className="mt-1 text-muted">{left} line{left === 1 ? "" : "s"} left to review in this project</p>
-            </button>
-          )}
-        </div>
-
-        <section>
-          <div className="mb-3 flex items-center justify-between">
-            <p className="eyebrow">Suggested evidence</p>
-            <div className="flex items-center gap-3">
-              <span className="hidden text-sm text-muted sm:inline">Sorted by confidence</span>
-              <button className="btn-outline btn-sm" onClick={() => setLinking(true)}><Icon.plus className="h-3.5 w-3.5" />Link evidence</button>
-            </div>
-          </div>
-
-          {lineMatches.length === 0 && (
-            <EmptyState title="No evidence linked to this line" body="Evidence appears missing. Upload a photo or docket, or link existing evidence manually." action={<button className="btn-primary" onClick={() => setLinking(true)}>Link evidence</button>} />
-          )}
-
-          <ul className="space-y-4">
-            {lineMatches.map((m) => {
-              const ev = evidence.find((e) => e.id === m.evidence_id) ?? db.evidence.find((e) => e.id === m.evidence_id)!;
-              const isPending = m.status === "suggested";
-              const low = m.confidence < 0.7;
-              return (
-                <li key={m.id} className={cx("card p-5 sm:p-6", isPending && low && "border-2 border-amber", isPending && !low && "border-2 border-amber/40")}>
-                  <div className="flex gap-4 sm:gap-6">
-                    <EvidenceIcon type={ev.evidence_type} className={cx("mt-1 h-8 w-8 shrink-0", isPending && low ? "text-amber" : "text-ink-2")} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <p className="text-lg font-semibold">{ev.title}{ev.evidence_type === "photo" ? ` — ${fmtDateTime(ev.captured_at)}` : `, ${new Date(ev.captured_at).toLocaleDateString("en-AU", { day: "numeric", month: "short" })}`}</p>
-                        {m.source === "ai" ? <AiBadge assessment={m.assessment} confidence={m.confidence} /> : <span className="pill bg-surface-2 text-muted">Linked manually</span>}
-                      </div>
-                      <p className="text-muted">{[ev.metadata.location && `Geotagged ${ev.metadata.location}`, ev.metadata.author].filter(Boolean).join(" · ")}</p>
-
-                      {m.source === "ai" && (
-                        <div className="mt-3 rounded-xl bg-surface px-4 py-3 text-sm">
-                          <p><span className="font-semibold">AI reasoning:</span> {m.reason}</p>
-                          {m.missing_evidence.length > 0 && <p className="mt-1 text-amber"><span className="font-semibold">Possibly missing:</span> {m.missing_evidence.join(", ")}</p>}
+            {lineMatches.length > 0 && (
+              <ul className="mt-6 space-y-3">
+                {lineMatches.map((m) => (
+                  <li key={m.id} className="rounded-xl border border-line p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{db.evidence.find((e) => e.id === m.evidence_id)?.title ?? "Unknown evidence"}</span>
+                          {m.source === "ai" && <AiBadge assessment={m.assessment} confidence={m.confidence} />}
                         </div>
-                      )}
-
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
-                        {isPending ? (
+                        <p className="mt-1 text-sm text-muted">{m.reason}</p>
+                        {m.missing_evidence.length > 0 && (
+                          <p className="mt-1 text-xs text-amber">Missing: {m.missing_evidence.join(", ")}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {m.status === "suggested" && (
                           <>
-                            <button className="btn-primary px-7" onClick={() => decide(m.id, "confirmed")}>Approve</button>
-                            <button className="btn-outline" onClick={() => decide(m.id, "rejected")}>Not this line</button>
-                            <button className="btn-outline" onClick={() => setChanging(m)}>Change line</button>
-                            {low && <span className="text-sm text-amber">Low confidence — check the {m.missing_evidence[0] ?? "details"}</span>}
+                            <button
+                              className="btn-primary btn-sm"
+                              disabled={busy === m.id}
+                              onClick={() => decide(m.id, "confirmed")}
+                            >
+                              {busy === m.id ? "Confirming…" : "Confirm"}
+                            </button>
+                            <button
+                              className="btn-outline btn-sm"
+                              disabled={busy === m.id}
+                              onClick={() => decide(m.id, "rejected")}
+                            >
+                              {busy === m.id ? "Rejecting…" : "Reject"}
+                            </button>
                           </>
-                        ) : (
-                          <>
-                            <span className="inline-flex items-center gap-2 font-semibold text-brand-dark">
-                              <Icon.checkCircle className="h-6 w-6 text-brand" />
-                              Approved by {m.confirmed_by === me.id ? "you" : read.actor(db, m.confirmed_by)}
-                            </span>
+                        )}
+                        {m.status === "confirmed" && (
+                          <span className="pill bg-mint text-brand-dark text-sm">
+                            <Icon.check className="h-3 w-3" /> Confirmed by {read.actor(db, m.confirmed_by)}
+                            <button className="ml-2 underline" disabled={busy === m.id} onClick={() => decide(m.id, "suggested")}>Reopen</button>
+                          </span>
+                        )}
+                        {m.status === "rejected" && (
+                          <span className="pill bg-red-bg text-red text-sm">
+                            <Icon.x className="h-3 w-3" /> Rejected by {read.actor(db, m.confirmed_by)}
                             <button className="ml-auto text-sm text-muted hover:text-ink-2" onClick={() => decide(m.id, "suggested")}>Undo</button>
-                          </>
+                          </span>
                         )}
                       </div>
                     </div>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-
-          {rejected.length > 0 && (
-            <details className="mt-4 text-sm">
-              <summary className="cursor-pointer text-muted">{rejected.length} rejected suggestion{rejected.length > 1 ? "s" : ""}</summary>
-              <ul className="mt-2 space-y-1">
-                {rejected.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
-                    <span>{db.evidence.find((e) => e.id === m.evidence_id)?.title} — rejected by {read.actor(db, m.confirmed_by)}</span>
-                    <button className="link text-xs" onClick={() => decide(m.id, "suggested")}>Reopen</button>
                   </li>
                 ))}
               </ul>
-            </details>
+            )}
+
+            {rejected.length > 0 && (
+              <details className="mt-4 text-sm">
+                <summary className="cursor-pointer text-muted">{rejected.length} rejected suggestion{rejected.length > 1 ? "s" : ""}</summary>
+                <ul className="mt-2 space-y-1">
+                  {rejected.map((m) => (
+                    <li key={m.id} className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                      <span>{db.evidence.find((e) => e.id === m.evidence_id)?.title} — rejected by {read.actor(db, m.confirmed_by)}</span>
+                      <button className="link text-xs" disabled={busy === m.id} onClick={() => decide(m.id, "suggested")}>Reopen</button>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <div className="mt-6">
+              <Banner title="AI suggests. You approve. SubPay never submits a claim on its own." body="Every approved link is stored with its source file, time and author." />
+            </div>
+          </section>
+        </div>
+
+        <div className="space-y-6">
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Link more evidence</p>
+            <p className="mt-2 text-muted">Manually link additional evidence to this line. Human links are recorded as confirmed.</p>
+            <button className="btn-outline mt-4" onClick={() => setLinking(true)}><Icon.plus className="h-4 w-4" /> Link evidence</button>
+          </section>
+
+          {unlinked.length > 0 && (
+            <section className="card p-6 sm:p-8">
+              <p className="eyebrow">Unlinked evidence</p>
+              <p className="mt-2 text-muted">These items have no contract link yet.</p>
+              <ul className="mt-4 space-y-2">
+                {unlinked.map((e) => (
+                  <li key={e.id} className="flex items-center justify-between rounded-lg border border-line px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <EvidenceIcon type={e.evidence_type} className="h-6 w-6 shrink-0 text-muted" />
+                      <span className="font-semibold">{e.code} · {e.title}</span>
+                    </div>
+                    <button className="btn-outline btn-sm" onClick={() => handleLink(e.id, item.id)}>Link</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
-          <div className="mt-6">
-            <Banner title="AI suggests. You approve. SubPay never submits a claim on its own." body="Every approved link is stored with its source file, time and author." />
-          </div>
-        </section>
+          <section className="card p-6 sm:p-8">
+            <p className="eyebrow">Move AI suggestion</p>
+            <p className="mt-2 text-muted">If a suggestion belongs to a different line, move it there.</p>
+            <button className="btn-outline mt-4" onClick={() => setChanging(lineMatches.find((m) => m.status === "suggested") ?? null)}><Icon.arrow className="h-4 w-4" /> Move suggestion</button>
+          </section>
+        </div>
       </div>
 
       {/* Line overview, dense on desktop */}
@@ -211,11 +251,11 @@ function Review() {
 
       <Dialog open={!!changing} onClose={() => setChanging(null)} title="Move evidence to another line">
         {changing && (
-          <ItemPicker items={items.filter((i) => i.id !== changing.contract_item_id)} onPick={(id) => { linkEvidence(changing.evidence_id, id, changing.id); setChanging(null); }} />
+          <ItemPicker items={items.filter((i) => i.id !== changing.contract_item_id)} onPick={(id) => { handleLink(changing.evidence_id, id, changing.id); setChanging(null); }} />
         )}
       </Dialog>
       <Dialog open={linking} onClose={() => setLinking(false)} title={`Link evidence to ${item.item_code}`}>
-        <EvidencePicker db={db} evidence={evidence} unlinked={unlinked.map((e) => e.id)} exclude={lineMatches.map((m) => m.evidence_id)} onPick={(id) => { linkEvidence(id, item.id); setLinking(false); }} />
+        <EvidencePicker db={db} evidence={evidence} unlinked={unlinked.map((e) => e.id)} exclude={lineMatches.map((m) => m.evidence_id)} onPick={(id) => { handleLink(id, item.id); setLinking(false); }} />
       </Dialog>
     </Page>
   );

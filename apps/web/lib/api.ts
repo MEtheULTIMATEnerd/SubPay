@@ -5,6 +5,7 @@
 import { commit, getDb, resetDb } from "./store";
 import * as ai from "./ai";
 import { ApiError } from "./errors";
+import { LIVE } from "./env";
 import type {
   Db, Profile, Project, ContractItem, Evidence, EvidenceMatch, Claim, Completeness, EvidenceType, Invitation, InvitationPreview, InvitationStatus,
 } from "./types";
@@ -95,27 +96,39 @@ export const read = {
 
 // ---------- F12 readiness (uses completeness of human-confirmed matches) ----------
 export function completeness(matches: EvidenceMatch[]): Completeness {
-  const live = matches.filter((m) => m.status !== "rejected");
-  const confirmed = live.filter((m) => m.status === "confirmed");
-  if (!live.length) return "missing";
-  if (!confirmed.length) return "weak"; // only unconfirmed AI suggestions
-  return confirmed.some((m) => m.assessment === "strong" && !m.missing_evidence.length) ? "strong" : "partial";
+  const confirmed = matches.filter((m) => m.status === "confirmed");
+  if (!confirmed.length) return "missing";
+  if (confirmed.every((m) => m.assessment === "weak")) return "weak";
+  return confirmed.some((m) => m.assessment === "strong")
+    && confirmed.every((m) => !m.missing_evidence.length) ? "strong" : "partial";
 }
 
 export function readiness(d: Db, claimId: string) {
+  if (LIVE) throw new ApiError(503, "Live claim readiness is not available yet", "service_unavailable");
   const c = claim(d, claimId);
   const items = read.projectItems(d, c.project_id);
   const matches = read.matches(d, c.project_id);
+  const activeEvidence = new Set(read.evidence(d, c.project_id).filter((e) => !e.archived).map((e) => e.id));
   const rows = d.claim_items
     .filter((ci) => ci.claim_id === claimId)
     .map((ci) => {
       const item = items.find((i) => i.id === ci.contract_item_id)!;
-      const m = matches.filter((x) => x.contract_item_id === item.id);
+      const m = matches.filter((x) => x.contract_item_id === item.id && activeEvidence.has(x.evidence_id));
+      const confirmed = m.filter((x) => x.status === "confirmed");
+      const support = completeness(m);
+      const state = support === "strong" && item.review_status !== "confirmed" ? "partial" : support;
+      const supportGaps = [...new Set(confirmed.flatMap((x) => x.missing_evidence))];
+      if (!confirmed.length) supportGaps.unshift("No confirmed evidence support");
+      if (state === "weak") supportGaps.push("Confirmed links have weak evidence assessments; review the source evidence");
+      if (state === "partial" && !supportGaps.length) supportGaps.push("Confirmed links have partial evidence assessments; review the source evidence");
+      if (item.review_status !== "confirmed") supportGaps.push("Contract line requires human confirmation");
       return {
         claimItem: ci,
         item,
         matches: m,
-        state: completeness(m),
+        state,
+        confirmedCount: confirmed.length,
+        supportGaps,
         pending: m.filter((x) => x.status === "suggested").length,
         reviewed: m.some((x) => x.status === "confirmed") && !m.some((x) => x.status === "suggested"),
       };
@@ -462,8 +475,14 @@ export function reviewMatch(id: string, status: "confirmed" | "rejected" | "sugg
     const m = match(d, id);
     const ev = evidence(d, m.evidence_id);
     const { item } = contractItem(d, m.contract_item_id);
+    const previousStatus = m.status;
+    if (previousStatus === status) return;
     Object.assign(m, { status, confirmed_by: status === "suggested" ? null : me(d).id, confirmed_at: status === "suggested" ? null : now(), updated_at: now() });
-    audit(d, ev.project_id, status === "suggested" ? "match.reopened" : `match.${status}`, "evidence_match", id, { evidence: ev.code, item: item.item_code });
+    audit(d, ev.project_id, status === "suggested" ? "match.reopened" : `match.${status}`, "evidence_match", id, {
+      evidence: ev.code, evidence_id: ev.id, item: item.item_code,
+      contract_item_id: item.id, match_id: id,
+      previous_status: previousStatus, new_status: status,
+    });
   });
 }
 /** Human links evidence to a contract item (new link or change of match). Always human-confirmed. */
@@ -505,10 +524,14 @@ export function createClaim(pid: string): string {
   return id;
 }
 export function recordExport(claimId: string, format: "pdf" | "json") {
+  if (LIVE) throw new ApiError(503, "Live audit is not available yet", "service_unavailable");
   commit((d) => {
     const c: Claim = claim(d, claimId);
-    c.status = "exported";
-    audit(d, c.project_id, "package.exported", "claim", claimId, { format, claim: c.name });
+    if (format === "json") c.status = "exported";
+    audit(d, c.project_id, format === "pdf" ? "package.print_initiated" : "package.download_initiated", "claim", claimId, {
+      format, claim: c.name, claim_id: c.id,
+      outcome: format === "pdf" ? "print_initiated" : "download_initiated",
+    });
   });
 }
 export function setVariationStatus(id: string, status: "acknowledged" | "dismissed" | "flagged") {

@@ -49,6 +49,7 @@ const input = (over: Partial<EvidenceInput> = {}): EvidenceInput => ({
 type Options = { query?: Record<string, number> };
 function api(routes: Record<string, unknown | ((options: Options) => unknown)>) {
   mocks.apiFetch.mockImplementation(async (path: string, options: Options = {}) => {
+    if (path === `/projects/${PROJECT_ID}/evidence-matches` && !(path in routes)) return { items: [] };
     if (!(path in routes)) throw new Error(`unexpected API call: ${path}`);
     const answer = routes[path];
     return typeof answer === "function" ? (answer as (options: Options) => unknown)(options) : answer;
@@ -131,7 +132,7 @@ test("upload sends the file and its details as a form, then follows processing a
   status = "ready";
   await vi.advanceTimersByTimeAsync(1600); // second check: ready
   expect(stored()?.processing_status).toBe("ready");
-  expect(read.audit(getDb(), PROJECT_ID).some((a) => a.action === "match.generated" && a.entity_id === EVIDENCE_ID)).toBe(true);
+  expect(calls(`/projects/${PROJECT_ID}/evidence-matches`)).toHaveLength(1);
   expect(JSON.stringify(getDb())).not.toContain("signed.test");
 
   const polls = calls(`/evidence/${EVIDENCE_ID}`).length;
@@ -252,14 +253,14 @@ test("re-running on failed evidence asks the API to process it again", async () 
 
   await vi.advanceTimersByTimeAsync(1600);
   expect(stored()?.processing_status).toBe("ready");
-  expect(read.audit(getDb(), PROJECT_ID).some((a) => a.action === "match.generated")).toBe(true);
+  expect(calls(`/projects/${PROJECT_ID}/evidence-matches`)).toHaveLength(1);
 });
 
-test("re-running on ready evidence only refreshes the suggestions", async () => {
+test("re-running ready evidence refreshes the persisted suggestions", async () => {
   commit((d) => { d.evidence.push(local()); });
+  api({ [`/projects/${PROJECT_ID}/evidence-matches`]: { items: [] } });
   await rerunMatching(EVIDENCE_ID);
-  expect(mocks.apiFetch).not.toHaveBeenCalled();
-  expect(read.audit(getDb(), PROJECT_ID)[0].action).toBe("match.generated");
+  expect(calls(`/projects/${PROJECT_ID}/evidence-matches`)).toHaveLength(1);
 });
 
 test("with AI switched off, ready evidence gets no suggestions", async () => {
@@ -270,7 +271,7 @@ test("with AI switched off, ready evidence gets no suggestions", async () => {
   await vi.advanceTimersByTimeAsync(1600);
 
   expect(stored()?.processing_status).toBe("ready");
-  expect(read.audit(getDb(), PROJECT_ID).some((a) => a.action === "match.generated")).toBe(false);
+  expect(calls(`/projects/${PROJECT_ID}/evidence-matches`)).toHaveLength(1);
 });
 
 test("a download link is fetched fresh each time and never stored", async () => {

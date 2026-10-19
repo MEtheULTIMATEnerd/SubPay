@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { useData } from "@/lib/store";
+import { LIVE } from "@/lib/env";
 import { read, readiness } from "@/lib/api";
 import { refreshProjects } from "@/lib/projects";
 import { NewProjectButton, ProjectCard } from "@/components/projects";
@@ -19,7 +20,7 @@ export default function Dashboard() {
   const hour = new Date().getHours();
 
   // Cross-project "do these first" list, derived from the live claim readiness.
-  const todo = active.flatMap((p) =>
+  const todo = (LIVE ? [] : active).flatMap((p) =>
     read.claims(db, p.id).filter((c) => c.status !== "exported").flatMap((c) => {
       const r = readiness(db, c.id);
       const base = `/projects/${p.id}`;

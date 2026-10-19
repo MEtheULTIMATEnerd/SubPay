@@ -2,14 +2,19 @@
 // F14 Evidence package export. PDF via the browser's print-to-PDF (simplest reliable MVP), plus structured JSON.
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 import { useData } from "@/lib/store";
+import { LIVE } from "@/lib/env";
 import { read, readiness, recordExport, type Readiness } from "@/lib/api";
+import { annexure, packageJson, PACKAGE_TITLE, PACKAGE_DISCLAIMER } from "@/lib/claim-package";
 import type { Db } from "@/lib/types";
 import { Banner, ErrorState, Icon, Page, PageHeader, fmtDate, fmtDateTime, money } from "@/components/ui";
 
 export default function ExportPage() {
   const db = useData();
   const { projectId, claimId } = useParams<{ projectId: string; claimId: string }>();
+  const [error, setError] = useState("");
+  if (LIVE) return <Page><ErrorState title="Live claim packages are not available yet" body="Claims and readiness still need backend integration." /></Page>;
   const c = read.claim(db, claimId);
   if (!c || c.project_id !== projectId) return <Page><ErrorState title="Claim not found" /></Page>;
 
@@ -30,11 +35,29 @@ export default function ExportPage() {
   ];
 
   function downloadJson() {
-    const blob = new Blob([JSON.stringify(packageJson(db, r), null, 2)], { type: "application/json" });
-    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `SubPay_${project.name.replace(/\W+/g, "_")}_Claim${c!.number}.json` });
-    a.click();
-    URL.revokeObjectURL(a.href);
-    recordExport(claimId, "json");
+    setError("");
+    let url: string | undefined;
+    try {
+      const blob = new Blob([JSON.stringify(packageJson(db, r), null, 2)], { type: "application/json" });
+      url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement("a"), { href: url, download: `SubPay_${project.name.replace(/\W+/g, "_")}_Claim${c!.number}.json` });
+      a.click();
+      recordExport(claimId, "json");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Package download could not be started");
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  }
+
+  function printPdf() {
+    setError("");
+    try {
+      window.print();
+      recordExport(claimId, "pdf");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Package printing could not be started");
+    }
   }
 
   return (
@@ -42,10 +65,11 @@ export default function ExportPage() {
       <div className="print:hidden">
         <Page wide>
           <PageHeader
-            title="Your claim pack, in the builder's format"
-            sub="Nothing changes for the builder. They receive the file they always receive."
+            title="Draft evidence-support package"
+            sub="For human review before preparing a claim for submission."
             right={<Link href={`/projects/${projectId}/claims/${claimId}`} className="btn-outline"><Icon.back className="h-4 w-4" />Readiness</Link>}
           />
+          {error && <div className="mb-6"><ErrorState title={error} /></div>}
           {r.pendingMatches > 0 && (
             <div className="mb-6 rounded-xl bg-amber-bg px-5 py-4 text-amber">
               <p className="font-semibold">{r.pendingMatches} AI suggestions are still unreviewed</p>
@@ -91,51 +115,23 @@ export default function ExportPage() {
                 </ul>
                 <hr className="my-5 border-line" />
                 <p className="flex justify-between text-lg font-bold"><span>Total claimed</span><span>{money(r.total)}</span></p>
-                <p className="mt-2 text-sm text-muted">Evidence annexure attached, items A1–A{annex.length} · {confirmedLines.length} lines with confirmed evidence</p>
+                <p className="mt-2 text-sm text-muted">{annex.length ? `Evidence references A1–A${annex.length}` : "No approved evidence references"} · {confirmedLines.length} lines with confirmed evidence</p>
                 <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <button className="btn-primary flex-1 py-3.5 text-base" onClick={() => { recordExport(claimId, "pdf"); setTimeout(() => window.print(), 50); }}>Export claim pack (PDF)</button>
+                  <button className="btn-primary flex-1 py-3.5 text-base" onClick={printPdf}>Export claim pack (PDF)</button>
                   <button className="btn-outline flex-1 py-3.5 text-base" onClick={downloadJson}>Download structured JSON</button>
                 </div>
               </div>
-              {c.status === "exported" && <p className="mt-3 text-sm text-brand-dark">Exported — recorded in the audit trail.</p>}
+              {c.status === "exported" && <p className="mt-3 text-sm text-brand-dark">Package download initiated — recorded in the audit trail.</p>}
             </section>
           </div>
           <div className="mt-8">
-            <Banner title="Your evidence stays in your account after the claim is paid." body="Kept for disputes, retention claims and defects liability. SubPay never sends the claim for you." />
+            <Banner title={PACKAGE_TITLE} body={PACKAGE_DISCLAIMER} />
           </div>
         </Page>
       </div>
       <PrintDocument db={db} r={r} />
     </>
   );
-}
-
-function annexure(db: Db, r: Readiness) {
-  const ids = [...new Set(r.rows.flatMap((x) => x.matches.filter((m) => m.status === "confirmed").map((m) => m.evidence_id)))];
-  return ids.map((id, i) => ({ ref: `A${i + 1}`, ev: db.evidence.find((e) => e.id === id)! }));
-}
-
-function packageJson(db: Db, r: Readiness) {
-  const annex = annexure(db, r);
-  const ref = (id: string) => annex.find((a) => a.ev.id === id)?.ref ?? null;
-  return {
-    generated_at: new Date().toISOString(),
-    disclaimer: "Evidence package prepared with SubPay. Not legally certified. AI-generated content is labelled; only human-confirmed links are treated as supporting evidence.",
-    claim: { name: r.claim.name, period_start: r.claim.period_start, period_end: r.claim.period_end, total_claimed: r.total, evidence_support_coverage_pct: r.coverage },
-    items: r.rows.map((x) => ({
-      item_code: x.item.item_code, description: x.item.description, source_reference: x.item.source_reference,
-      claimed_amount: x.claimItem.claimed_amount, evidence_status: x.state,
-      evidence: x.matches.filter((m) => m.status !== "rejected").map((m) => ({
-        annexure_ref: m.status === "confirmed" ? ref(m.evidence_id) : null,
-        evidence_code: db.evidence.find((e) => e.id === m.evidence_id)?.code,
-        human_status: m.status, confirmed_by: m.confirmed_by ? read.actor(db, m.confirmed_by) : null, confirmed_at: m.confirmed_at,
-        ai: m.source === "ai" ? { confidence: m.confidence, assessment: m.assessment, reason: m.reason, missing_evidence: m.missing_evidence } : null,
-      })),
-    })),
-    annexure: annex.map((a) => ({ ref: a.ref, code: a.ev.code, title: a.ev.title, type: a.ev.evidence_type, captured_at: a.ev.captured_at, location: a.ev.metadata.location, file: a.ev.storage_path })),
-    potential_variations: r.variations.map((v) => ({ code: v.code, title: v.title, ai_confidence: v.confidence, reason: v.reason, status: v.status, review_required: v.review_required })),
-    notice_flags: r.notices.map((n) => ({ item: n.label, requirement: n.text, due: n.due, certainty: n.definitive ? "identified" : "potential — review contract" })),
-  };
 }
 
 /** Only visible when printing — becomes the PDF. */
@@ -147,13 +143,14 @@ function PrintDocument({ db, r }: { db: Db; r: Readiness }) {
   return (
     <article className="hidden p-8 text-[11pt] text-black print:block">
       <header className="border-b-2 border-black pb-4">
-        <p className="text-sm">Evidence package · generated {fmtDateTime(new Date().toISOString())}</p>
+        <p className="text-sm">{PACKAGE_TITLE} Generated {fmtDateTime(new Date().toISOString())}</p>
         <h1 className="text-3xl font-bold">Progress claim #{r.claim.number} — {project.name}</h1>
         <p>{org.name} → {project.client_name} · Period {fmtDate(r.claim.period_start)} – {fmtDate(r.claim.period_end)}</p>
       </header>
 
       <h2 className="mt-6 text-xl font-bold">1. Claim summary</h2>
-      <p>Total claimed {money(r.total)} across {r.rows.length} lines. {r.counts.strong} lines ({money(r.values.strong)}) have strong, human-confirmed evidence; {r.counts.partial} partial; {r.counts.weak} weak; {r.counts.missing} without evidence. Evidence support coverage: {r.coverage}% of claimed value.</p>
+      <p>Total claimed {money(r.total)} across {r.rows.length} lines. {r.counts.strong} lines ({money(r.values.strong)}) have strong confirmed evidence support; {r.counts.partial} partial; {r.counts.weak} weak; {r.counts.missing} without confirmed support. Evidence support coverage: {r.coverage}% of claimed value.</p>
+      <p>Coverage is the claimed value of lines with strong confirmed support divided by total claimed value, rounded to a whole percent.</p>
 
       <h2 className="mt-6 text-xl font-bold">2–3. Contract items and evidence mappings</h2>
       <table className="mt-2 w-full border-collapse text-[9pt]">
@@ -179,7 +176,7 @@ function PrintDocument({ db, r }: { db: Db; r: Readiness }) {
       <h2 className="mt-6 text-xl font-bold">5. Missing or weak evidence</h2>
       <ul className="text-[9pt]">
         {r.rows.filter((x) => x.state !== "strong").map((x) => (
-          <li key={x.item.id}>{x.item.item_code} {x.item.description} — {x.state}; {[...new Set(x.matches.flatMap((m) => m.missing_evidence))].join(", ") || "no supporting evidence linked"} <em>(AI-identified)</em></li>
+          <li key={x.item.id}>{x.item.item_code} {x.item.description} — {x.state}; {x.supportGaps.join("; ")}</li>
         ))}
       </ul>
 
@@ -190,10 +187,10 @@ function PrintDocument({ db, r }: { db: Db; r: Readiness }) {
       <ul className="text-[9pt]">{r.notices.map((n) => <li key={n.key}>{n.label}: {n.definitive ? "" : "Potential requirement — review contract. "}{n.text}{n.due ? ` — by ${fmtDate(n.due)}` : ""}</li>)}</ul>
 
       <h2 className="mt-6 text-xl font-bold">8. Human confirmation status</h2>
-      <p>{r.reviewed} of {r.rows.length} lines fully reviewed by a person. {r.pendingMatches} AI suggestions remain unreviewed and are excluded from the annexure.</p>
+      <p>{r.reviewed} of {r.rows.length} lines have confirmed links with no pending suggestions. {r.pendingMatches} suggestions are NOT APPROVED SUPPORT and are excluded from the annexure. Confirmation of a link does not certify that a contractual requirement has been satisfied.</p>
 
       <footer className="mt-8 border-t border-black pt-3 text-[8pt]">
-        9. Generated {new Date().toISOString()} by SubPay. This package organises evidence; it is not legally certified and does not determine entitlement. AI-generated content is labelled as such.
+        9. Generated {new Date().toISOString()} by SubPay. {PACKAGE_DISCLAIMER} AI-generated content is labelled as such.
       </footer>
     </article>
   );

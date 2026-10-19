@@ -3,11 +3,12 @@ import Link from "next/link";
 import { useState } from "react";
 import type { Db, Project } from "@/lib/types";
 import { read, readiness } from "@/lib/api";
+import { LIVE } from "@/lib/env";
 import { Icon, Progress, cx, fmtDate } from "./ui";
 
 export function ProjectCard({ db, p }: { db: Db; p: Project }) {
   const claim = read.claims(db, p.id).at(-1);
-  const r = claim ? readiness(db, claim.id) : null;
+  const r = !LIVE && claim ? readiness(db, claim.id) : null;
   return (
     <Link href={`/projects/${p.id}`} className="card group flex flex-col p-6 transition hover:border-sage hover:shadow-sm">
       <div className="flex items-start justify-between gap-3">

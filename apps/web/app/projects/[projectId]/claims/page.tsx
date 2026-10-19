@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
+import { LIVE } from "@/lib/env";
 import { createClaim, read, readiness } from "@/lib/api";
 import { EmptyState, ErrorState, Icon, Page, PageHeader, Progress, cx, fmtDate, money } from "@/components/ui";
 
@@ -13,6 +14,8 @@ export default function ClaimsPage() {
   const claims = read.claims(db, projectId).slice().reverse();
   const [error, setError] = useState("");
 
+  if (LIVE) return <Page><ErrorState title="Live claims are not available yet" body="Claim creation and readiness still need backend integration. You can continue reviewing evidence in Review." /></Page>;
+
   function create() {
     try { router.push(`/projects/${projectId}/claims/${createClaim(projectId)}`); } catch (e) { setError((e as Error).message); }
   }
@@ -21,7 +24,7 @@ export default function ClaimsPage() {
     <Page wide>
       <PageHeader
         title="Progress claims"
-        sub="Check what is proven before you send each claim to the builder."
+        sub="Check confirmed evidence support and remaining gaps for each claim."
         right={<button className="btn-primary" onClick={create}><Icon.plus className="h-4 w-4" />New claim</button>}
       />
       {error && <div className="mb-5"><ErrorState title={error} /></div>}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
+import { LIVE } from "@/lib/env";
 import { read, readiness, setVariationStatus, type Readiness } from "@/lib/api";
 import type { Db } from "@/lib/types";
 import { ErrorState, Icon, Page, PageHeader, Progress, StateBadge, cx, fmtDate, money } from "@/components/ui";
@@ -12,6 +13,7 @@ export default function ClaimDashboard() {
   const db = useData();
   const { projectId, claimId } = useParams<{ projectId: string; claimId: string }>();
   const [view, setView] = useState<"summary" | "graph">("summary");
+  if (LIVE) return <Page><ErrorState title="Live claim readiness is not available yet" body="Claims and readiness still need backend integration. You can continue reviewing evidence in Review." /></Page>;
   const c = read.claim(db, claimId);
   if (!c || c.project_id !== projectId) return <Page><ErrorState title="Claim not found" /></Page>;
 
@@ -24,7 +26,7 @@ export default function ClaimDashboard() {
   const varNotice = r.notices.find((n) => !n.definitive && n.text.startsWith("Variation") && n.days != null && n.days >= 0);
 
   const actions = [
-    ...r.rows.filter((x) => x.state === "missing").slice(0, 1).map((x) => `Capture evidence for ${x.item.item_code} ${x.item.description}`),
+    ...r.rows.filter((x) => x.state !== "strong").slice(0, 1).map((x) => `${x.item.item_code} ${x.item.description}: ${x.supportGaps.join("; ")}`),
     ...r.rows.filter((x) => x.item.notice_requirement && x.state !== "strong").slice(0, 1).map((x) => `${x.item.item_code}: ${x.item.notice_requirement}`),
     ...r.variations.filter((v) => v.status === "flagged").slice(0, 1).map((v) => `Review the potential variation for ${v.title.toLowerCase()} — consider a notice`),
     r.pendingMatches > 0 && `Confirm or reject ${r.pendingMatches} AI-suggested evidence links`,
@@ -34,7 +36,7 @@ export default function ClaimDashboard() {
     <Page wide>
       <PageHeader
         title="Before you send this claim"
-        sub="What is fully proven, what is missing, and what is about to cost you money."
+        sub="Review confirmed evidence links and support gaps before preparing your claim."
         right={
           <>
             <span className="text-sm text-muted">{c.name} · due to the builder {fmtDate(c.due_date)}</span>
@@ -48,11 +50,11 @@ export default function ClaimDashboard() {
           <p className="text-sage">Evidence support coverage</p>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-8">
             <p className="text-7xl font-bold leading-none sm:text-8xl">{r.coverage}%</p>
-            <p className="pb-2 text-lg leading-snug">of the value you are claiming<br className="hidden sm:block" /> is backed by approved evidence</p>
+            <p className="pb-2 text-lg leading-snug">of claimed value has strong<br className="hidden sm:block" /> confirmed evidence support</p>
           </div>
           <div className="mt-6"><Progress value={r.coverage} dark /></div>
-          <p className="mt-3 text-sage">{money(r.values.strong)} fully supported · {money(notProven)} not yet proven</p>
-          <p className="mt-4 text-xs text-sage/80">A measure of evidence coverage, not of claim validity or legal entitlement.</p>
+          <p className="mt-3 text-sage">{money(r.values.strong)} strong support · {money(notProven)} needs attention</p>
+          <p className="mt-4 text-xs text-sage/80">Strong-support claimed value divided by total claimed value, rounded to a whole percent. Confirmed links do not certify contractual compliance or legal entitlement.</p>
         </section>
         <section className="card p-7 sm:p-9">
           <p className="font-semibold">Do these things first</p>
@@ -65,14 +67,14 @@ export default function ClaimDashboard() {
                 </li>
               ))}
             </ol>
-          ) : <p className="mt-5 text-muted">Nothing outstanding. Every line has approved evidence.</p>}
+          ) : <p className="mt-5 text-muted">No support gaps identified from the current records. Check contractual requirements before submission.</p>}
         </section>
       </div>
 
       <div className="mt-8 space-y-3">
-        <StatusRow color="bg-brand" title="Fully supported" sub="Evidence approved and linked to a clause" count={`${r.counts.strong} of ${r.rows.length} lines`} value={money(r.values.strong)} valueColor="text-brand" />
+        <StatusRow color="bg-brand" title="Strong confirmed support" sub="Confirmed links with strong assessments and no recorded support gaps" count={`${r.counts.strong} of ${r.rows.length} lines`} value={money(r.values.strong)} valueColor="text-brand" />
         <StatusRow
-          color="bg-amber" title="Claimable, not yet proven" sub="You can claim it, but approved evidence doesn't fully back it yet"
+          color="bg-amber" title="Evidence needs attention" sub="Missing confirmed links, weak assessments, or recorded support gaps"
           count={`${notProvenLines} lines`} value={money(notProven)} valueColor="text-amber"
           action={notProvenLines > 0 && <Link href={`${base}/review?item=${r.rows.find((x) => x.state !== "strong")?.item.id}`} className="btn-primary px-8">Fix now</Link>}
         />
@@ -220,10 +222,10 @@ function Summary({ db, r, base }: { db: Db; r: Readiness; base: string }) {
                 </td>
                 <td className="px-4 py-3">
                   <StateBadge state={row.state} />
-                  <p className="text-xs text-muted">{row.matches.filter((m) => m.status === "confirmed").length} human-confirmed · {row.pending} awaiting</p>
+                  <p className="text-xs text-muted">{row.confirmedCount} human-confirmed · {row.pending} awaiting</p>
                 </td>
                 <td className="max-w-xs px-4 py-3 text-muted">{top ? top.reason : "—"}</td>
-                <td className="px-4 py-3 text-amber">{[...new Set(live.flatMap((m) => m.missing_evidence))].join(", ") || (row.state === "missing" ? "Any supporting evidence" : "—")}</td>
+                <td className="px-4 py-3 text-amber">{row.supportGaps.join("; ") || "No support gaps recorded"}</td>
               </tr>
             );
           })}
