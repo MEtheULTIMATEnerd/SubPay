@@ -1,18 +1,52 @@
 # SubPay — MVP prototype
 
-> Verified progress claims, from site photo to payment.
+> Evidence support for progress claims, with human review.
 
-A clickable, fully working **frontend prototype** of the SubPay MVP (F01–F20), styled from the Assessment 2b deck. It runs entirely in the browser: a mock service layer and a deterministic mock AI stand in for FastAPI, Supabase and Arya's AI services, using the same data shapes the team prompts agreed on.
+A **deterministic frontend MVP demo** for FIT3195 Assessment 3. The complete
+demonstration workflow runs in the browser using fictional seed data,
+localStorage and simulated AI behaviour. It is not a verified live deployment.
+The protected frontend checkpoint is `707a63ea6bc79999ce6bdb2609f46070ed5b7f3b`
+on `feature/claim-experience`; ensure the supplied checkout contains that checkpoint.
+
+## Run the FIT3195 MVP Demo
+
+1. **Prerequisites:** Git to obtain the submitted repository, Node.js 22.12 or
+   newer (Node.js 24 also works), npm and a modern browser. Internet access is
+   needed to download npm dependencies. Python, Docker, Supabase, FastAPI and
+   external AI API keys are **not required for deterministic demo mode**.
+2. From the repository root, install the frontend dependencies and start Next.js:
+
+   ```bash
+   cd apps/web
+   npm install
+   npm run dev -- --webpack --port 3101
+   ```
+
+3. Open [http://localhost:3101](http://localhost:3101) after the server reports
+   ready. Keep the terminal running while using the demo.
+4. On the login page, select **Continue as demo user**. This uses the fictional
+   Ollie Reid account at Kearney Formwork Pty Ltd; no real account or password
+   is needed.
+5. To restore the fictional starting state, open **Profile & settings**, select
+   **Reset demo data**, and confirm. This discards changes made in this browser's
+   demo store. Use the same browser and origin to retain demo progress.
+6. To stop the server, press **Ctrl+C** in its terminal.
+
+**Keep demo mode enabled:** a fresh clone needs no environment file. Leave
+`NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` unset or empty,
+including in the launching shell. The app selects live mode when both are
+populated; `NEXT_PUBLIC_API_URL` alone does not enable it. Do not configure
+Supabase or run database migrations to follow this demo.
 
 ## Repository
 
 ```
 apps/web/            Next.js frontend (the working prototype described below)
 services/api/        FastAPI application, /api/v1     (auth, profile, projects, contract upload and extraction)
-services/ai/         AI service, /ai/v1               (not built yet)
+services/ai/         FastAPI AI service, /ai/v1; mock services and optional hosted vision adapters
 supabase/            Migrations, seed data and database checks
 packages/contracts/  Shared API / type contracts
-tests/integration/   Cross-service end-to-end tests
+tests/integration/   Cross-service test intent (currently documentation)
 docs/                Architecture, API contracts, database schema, development guide
 ```
 
@@ -20,32 +54,49 @@ Start with [docs/development-guide.md](docs/development-guide.md). The shared
 contracts every workstream builds against are in
 [docs/api-contracts.md](docs/api-contracts.md) and
 [docs/database-schema.md](docs/database-schema.md). What is built and what is
-still mock is tracked in [docs/architecture.md](docs/architecture.md#7-current-state).
+still mock is also discussed in [docs/architecture.md](docs/architecture.md#7-current-state).
+Some supporting documents describe earlier phases; the demo instructions and
+limitations in this README describe the submitted frontend workflow.
 
-## Run it
+## Frontend Checks
 
-```bash
-cd apps/web
-npm install
-npm run dev        # http://localhost:3000
-```
-
-Click **Continue as demo user** (Ollie Reid, Kearney Formwork Pty Ltd). Any password works for seeded accounts. Data is saved in your browser's localStorage. To start over, go to **Profile & settings → Reset demo data**.
-
-That is **demo mode**, the default. To use real Supabase sign-in and the API instead (**live mode**), copy `apps/web/.env.example` to `apps/web/.env.local`, fill it in, and follow [docs/development-guide.md](docs/development-guide.md).
-
-Checks: `npm test` (Vitest), `npm run test:e2e` (Playwright), `npm run typecheck`, `npm run lint`, `npm run build`.
+Run from `apps/web`: `npm test` (Vitest), `npm run lint`, `npm run build`,
+`npm run typecheck`, and optionally `npm run test:e2e` (Playwright). On a fresh
+clone, run the build or development server before typecheck so Next.js generates
+its route types. Browser tests need Playwright Chromium installed separately;
+see [the development guide](docs/development-guide.md#7-checks). No checks need
+to be run merely to explore the demo.
 
 ## Demo script (Hume St Tower, Claim #7)
 
-1. **Dashboard**: shows the project, evidence support coverage and a "do these things first" list.
-2. **Contract**: `Subcontract_HumeSt_Formwork.pdf` has been turned into a 12-line claim schedule. Two lines are AI drafts that need a human check. Upload any PDF/DOCX to watch the mock extraction run.
-3. **Evidence**: library with search and type/date filters, plus two potential-variation flags. **Capture on site** is the phone flow: photo → "Which item is this?" → Add to claim.
-4. **Review**: approve, reject or move the AI-suggested evidence for each line. Human decisions are styled differently from AI suggestions everywhere.
-5. **Claims → Claim #7**: the readiness dashboard (coverage, strong/partial/weak/missing, variations, notice deadlines), the claim evidence summary and the evidence graph.
-6. **Evidence package**: export to PDF (print view) or structured JSON.
-7. **Audit trail**: every upload, AI action and human decision, newest first.
-8. **Profile → Simulate AI outage**: extraction and matching fail gracefully, and manual review still works.
+1. **Demo login and project:** select Continue as demo user, then choose
+   **Hume St Tower** from the dashboard. Claim #7 and its evidence are fictional.
+2. **Simulated contract extraction:** open Contract. The existing 12-line schedule
+   is seeded data, not the result of reading a real PDF. Upload a PDF/DOCX to
+   demonstrate simulated processing: a filename selects one of two fixed schedules.
+3. **Contract item review:** open Review items, inspect a draft, edit if needed,
+   and Save & confirm. Matching uses human-confirmed contract items.
+4. **Evidence upload:** add a photo or written evidence note with a descriptive
+   title and description. For example, use `Formwork slab soffit L3 complete`
+   to demonstrate keyword matching. The browser does not analyse image pixels.
+5. **Deterministic matching:** Upload & match simulates processing and produces
+   suggestions from text overlap. Open Review to inspect reasoning and gaps.
+6. **Human decisions:** Confirm or Reject a suggestion; Reopen a reviewed link
+   to return it to suggested status. Rejected links are available in the rejected
+   suggestions section. Decisions persist locally across page reloads.
+7. **Readiness and gaps:** open Claims, then Claim #7. Inspect strong, partial,
+   weak and missing support, outstanding suggestions and evidence gaps. Only
+   confirmed links count as approved support; reopening removes that approval.
+8. **Draft package:** open Evidence package and download structured JSON or use
+   Export claim pack (PDF) to open browser printing, where PDF saving depends on
+   the browser. The draft includes approved evidence references and metadata,
+   not original source files. Unreviewed suggestions are not approved support.
+9. **Audit trail:** inspect locally persisted review decisions and download/print
+   initiation events. Seeded examples are labelled. A print event does not prove
+   a PDF was saved; this browser history is not tamper-proof.
+
+Optional: Profile & settings includes a simulated AI outage control for showing
+manual-review fallback. All inference in this browser walkthrough is simulated.
 
 ## Structure
 
@@ -65,25 +116,62 @@ apps/web/
     store.ts                localStorage-backed store + React hook
 ```
 
-## Swapping in the real backend
+## AI Architecture
 
-| Prototype | Replace with | Owner |
-|---|---|---|
-| `lib/store.ts` (localStorage) | Supabase Postgres + RLS | Jaden |
-| `signIn` / `signUp` in `lib/api.ts` | Supabase Auth (JWT forwarded to FastAPI). **Done** in live mode: see `lib/auth.ts`. | Platform |
-| member and invitation functions in `lib/api.ts` | `/api/v1/organisation/members`, `/api/v1/organisation/invitations` and `/api/v1/invitations/{code}`. **Done** in live mode: see `lib/members.ts`. | Platform |
-| project functions in `lib/api.ts` | `/api/v1/projects`. **Done** in live mode: see `lib/projects.ts`. | Platform |
-| contract and contract item functions in `lib/api.ts` | `/api/v1/.../contracts` and `/api/v1/contract-items`. **Done** in live mode: see `lib/contracts.ts`. | Kinori |
-| evidence functions in `lib/api.ts` (upload, edit, archive) | `/api/v1/.../evidence`. **Done** in live mode: see `lib/evidence.ts`. | Kinori |
-| other `lib/api.ts` functions (matches, claims, audit, notifications) | `fetch` calls to the matching `/api/v1/...` endpoints, following `lib/projects.ts` | Rehan / Jaden |
-| `lib/ai.ts` | `POST /ai/v1/...` calls (same input/output shapes) | Arya |
-| `thumbnail` previews / file metadata | Supabase Storage with signed URLs. **Done** in live mode: see `previewOf` in `lib/evidence.ts`. | Kinori |
+- **Browser demo:** `apps/web/lib/ai.ts` provides simulated extraction,
+  deterministic text matching and rule-based potential-variation flags. It does
+  not call a hosted model or perform live vision inference. Confidence values
+  are placeholder heuristics, not calibrated probabilities.
+- **Optional AI service:** `services/ai` exposes `/ai/v1` through FastAPI.
+  `app/providers/base.py` defines provider protocols; `openai.py` and
+  `openrouter.py` implement configurable hosted vision adapters alongside mocks.
+  The default model identifiers are `gpt-4o-mini` for OpenAI and
+  `openai/gpt-4o-mini` for OpenRouter. These use a pretrained model to request
+  construction-relevant visual observations; they are not part of the browser demo.
+- **Deterministic service rules:** matching uses token overlap and returns up to
+  three suggestions. Completeness and variation detection are rule-based, not
+  trained classifiers. Service matching and browser demo matching have different
+  thresholds and inputs; they are not identical implementations.
+- **Training and validation:** SubPay has not trained or fine-tuned a custom
+  model. Fictional seed data and test fixtures are not training data. Automated
+  software tests do not establish real-world AI accuracy, precision or recall;
+  no such performance metrics have been established.
+- **Human review:** suggestions require review, and only human-confirmed links
+  count as approved support in demo readiness and exports. Confirmation of a link
+  does not certify that the work satisfies a contractual requirement.
 
-Pages read from the local store through `lib/api.ts`, and write through a small module per feature (`lib/auth.ts`, `lib/members.ts`, `lib/projects.ts`, `lib/contracts.ts`, `lib/evidence.ts`), so the swap is made one feature at a time.
+AI configuration is described by `services/ai/.env.example`; mock vision needs
+no external key. Real provider keys are server-only and are unnecessary for
+assessment demo setup. `services/ai/README.md` describes the earlier foundation
+phase and has not yet been updated for the optional hosted vision adapters.
 
-## Prototype limits (deliberate)
+## Live Integration Status
 
-- In demo mode uploaded files are not stored. Only their metadata is kept, plus a small preview for images. In live mode contracts and evidence files are stored in private Supabase Storage buckets.
-- The mock AI uses keyword overlap. Its confidence values are placeholders, not calibrated scores.
-- In demo mode auth is simulated, so no passwords are stored. "Organisation isolation" for mock data is enforced in `lib/api.ts`. In live mode Supabase Auth and database RLS do this for real.
-- "Evidence support coverage" is the share of claimed value backed by strong, human-confirmed evidence. It is not a measure of claim validity or legal entitlement.
+Frontend adapters exist for Supabase Auth, profiles, members, projects, contracts,
+evidence and match review. Application data is intended to flow through FastAPI;
+the browser Supabase client handles authentication. See `apps/web/lib/auth.ts`,
+`projects.ts`, `contracts.ts`, `evidence.ts` and `matches.ts`.
+
+**Live database integration is unverified.** The deterministic walkthrough does
+not demonstrate an authenticated database-backed deployment. Live claims,
+readiness, export and audit are incomplete and unavailable in their frontend
+views; notifications remain locally simulated. Backend and migration setup is
+separate development work, not a prerequisite for this assessment demo. Do not
+apply migrations to an unknown project merely to run the frontend.
+
+## Limitations and Review Safeguards
+
+- Contract extraction uses simulated schedules selected by filename; uploaded
+  PDF/DOCX contents are not actually extracted in the current mock implementation.
+- Demo records and decisions are stored locally in browser localStorage, not in
+  a shared database. Clearing browser data or resetting the demo loses changes.
+- Original uploaded files are **not durably retained in demo mode**. Metadata
+  and small image previews may be retained; exports do not bundle original files.
+  Use fictional or non-sensitive uploads for the demonstration.
+- The generated evidence-support package is a **draft for human review**, not
+  a certified claim or proof of contractual compliance. SubPay does not determine
+  legal entitlement, guarantee payment, certify claims or submit them automatically.
+- Evidence support coverage is the rounded share of claimed value with strong,
+  human-confirmed support. It is neither model accuracy nor claim validity.
+- AI suggestions, possible variations and notice flags require human checking.
+  Local audit history records demo activity, not a tamper-proof legal record.
