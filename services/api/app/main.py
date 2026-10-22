@@ -13,6 +13,7 @@ from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.limits import BodySizeLimitMiddleware
+from app.integrated import LocalSettings, create_local_app
 
 logger = logging.getLogger("subpay.api")
 
@@ -32,6 +33,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         override = settings
 
     prefix = settings.api_v1_prefix
+    local = LocalSettings()
+    local_app = create_local_app(local) if local.enabled else None
     app = FastAPI(
         title="SubPay API",
         version=settings.version,
@@ -48,7 +51,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Bearer tokens, not cookies, so credentials stay off and origins stay explicit.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origin_list,
+        allow_origins=list(
+            dict.fromkeys(settings.cors_origin_list + (local.origins if local.enabled else []))
+        ),
         allow_credentials=False,
         allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
@@ -56,6 +61,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     register_error_handlers(app)
     app.include_router(api_router, prefix=prefix)
+    if local_app is not None:
+        app.mount(f"{prefix}/integrated", local_app)
 
     if not settings.supabase_jwks_url and not settings.supabase_jwt_secret.get_secret_value():
         logger.warning(

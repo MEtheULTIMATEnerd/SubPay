@@ -12,6 +12,12 @@ import { Icon, Loading, Logo, cx, fmtDateTime } from "./ui";
 const PUBLIC = ["/login", "/signup"];
 
 export function AppShell({ children }: { children: ReactNode }) {
+  const path = usePathname();
+  if (path === "/integrated") return <>{children}</>;
+  return <DemoShell>{children}</DemoShell>;
+}
+
+function DemoShell({ children }: { children: ReactNode }) {
   const db = useDb();
   const auth = useAuth();
   const path = usePathname();

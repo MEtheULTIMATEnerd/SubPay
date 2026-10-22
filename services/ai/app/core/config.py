@@ -36,6 +36,8 @@ class Settings(BaseSettings):
 
     # Request timeout in seconds for vision analysis calls
     vision_timeout_seconds: float = 30.0
+    local_vision_enabled: bool = False
+    local_access_token: SecretStr = SecretStr("")
 
 
 @lru_cache

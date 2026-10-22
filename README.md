@@ -38,6 +38,39 @@ including in the launching shell. The app selects live mode when both are
 populated; `NEXT_PUBLIC_API_URL` alone does not enable it. Do not configure
 Supabase or run database migrations to follow this demo.
 
+## Integrated MVP — Local Development
+
+SubPay has two separate experiences:
+
+- **Deterministic Demo:** the existing browser-based demonstration described
+  above and in the demo script below, using fictional/local frontend data and
+  simulated AI. Its existing startup and reset instructions are unchanged.
+- **Integrated MVP:** the `/integrated` route connects Next.js to a local
+  FastAPI backend with SQLite persistence. It supports real PDF/DOCX text
+  extraction, contract-item review, actual image uploads, optional GPT-4o-mini
+  image analysis, deterministic evidence-to-contract match suggestions, human
+  confirmation/rejection/reopening, and draft claim-support JSON/HTML exports.
+
+The integrated experience is **development-only**, not production-ready or
+cloud-deployed. Local services must be explicitly configured and started; see
+[the integrated frontend setup](apps/web/INTEGRATED.md) and
+[the local API, storage and endpoint guide](services/api/LOCAL_INTEGRATION.md).
+It does not require Supabase or database migrations. Mock vision is available
+for safe plumbing checks and is clearly labelled; it is not real image analysis
+and is excluded from real-evidence matching.
+
+Real OpenAI inference requires explicit image approval and browser confirmation;
+requests may incur API charges. Uploading, loading or refreshing does not
+automatically trigger inference. Matching scores are relevance heuristics, not
+probabilities. SubPay does not certify completed work, construction compliance
+or payment entitlement; exported packages remain drafts for human review.
+
+The demo's simulated-extraction/localStorage limitations below remain specific
+to that experience. The later Live Integration Status section describes the
+separate Supabase-backed deployment path, not this local SQLite workflow.
+Likewise, the shared AI service's matching rules are distinct from the local
+integrated matcher documented in the API guide.
+
 ## Repository
 
 ```

@@ -30,3 +30,9 @@ venv/
 # Supabase CLI
 supabase/.branches/
 supabase/.temp/
+
+# Local integrated MVP database and future private uploads
+services/api/.local-data/
+
+# Downloaded evaluation photographs, manifests and isolated test databases
+.local-evaluation/
