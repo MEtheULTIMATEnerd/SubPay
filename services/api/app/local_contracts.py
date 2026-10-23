@@ -91,6 +91,19 @@ def add_item(db, contract_id, body, source, origin):
     return record
 
 
+def delete_items(db, where, params):
+    """Remove items and the match suggestions pointing at them (the FKs do not cascade)."""
+    if db.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='local_matches'"
+    ).fetchone():
+        db.execute(
+            "DELETE FROM local_matches WHERE contract_item_id IN "
+            f"(SELECT id FROM local_contract_items WHERE {where})",
+            params,
+        )
+    db.execute(f"DELETE FROM local_contract_items WHERE {where}", params)
+
+
 def register_contract_routes(app: FastAPI, data_dir: Path, connect):
     database = data_dir / "projects.sqlite3"
     base = "/projects/{project_id}/contracts"
@@ -185,6 +198,17 @@ def register_contract_routes(app: FastAPI, data_dir: Path, connect):
             record["sources"] = json.loads(record["sources"])
             return record
 
+    @app.delete(base + "/{contract_id}", status_code=204)
+    def delete_contract(project_id: UUID, contract_id: UUID):
+        with connect(database) as db:
+            schema(db)
+            record = require_contract(db, project_id, contract_id)
+            delete_items(db, "contract_id=?", (str(contract_id),))
+            db.execute("DELETE FROM local_contracts WHERE id=?", (str(contract_id),))
+        path = (data_dir / record["storage_path"]).resolve()
+        if path.is_relative_to(data_dir.resolve()):
+            path.unlink(missing_ok=True)
+
     @app.get(base + "/{contract_id}/original")
     def original(project_id: UUID, contract_id: UUID):
         with connect(database) as db:
@@ -229,6 +253,12 @@ def register_contract_routes(app: FastAPI, data_dir: Path, connect):
         if row is None:
             raise HTTPException(404, "Contract item not found")
         return dict(row)
+
+    @app.delete(base + "/{contract_id}/items/{item_id}", status_code=204)
+    def delete_item(project_id: UUID, contract_id: UUID, item_id: UUID):
+        with connect(database) as db:
+            require_item(db, project_id, contract_id, item_id)
+            delete_items(db, "id=?", (str(item_id),))
 
     @app.patch(base + "/{contract_id}/items/{item_id}")
     def edit_item(project_id: UUID, contract_id: UUID, item_id: UUID, body: ItemInput):

@@ -32,6 +32,10 @@ class ContractRepository(Protocol):
 
     def update_item(self, item_id: UUID, changes: dict[str, Any]) -> ContractItem | None: ...
 
+    def delete_contract(self, contract_id: UUID) -> bool: ...
+
+    def delete_item(self, item_id: UUID) -> bool: ...
+
 
 class SupabaseContractRepository:
     def __init__(self, rest: SupabaseRest) -> None:
@@ -85,3 +89,10 @@ class SupabaseContractRepository:
         # The database records who reviewed the item and flags human edits.
         rows = self._rest.update("contract_items", {"id": f"eq.{item_id}"}, changes)
         return ContractItem.model_validate(rows[0]) if rows else None
+
+    def delete_contract(self, contract_id: UUID) -> bool:
+        # Its items go with it (on delete cascade).
+        return bool(self._rest.delete("contracts", {"id": f"eq.{contract_id}"}))
+
+    def delete_item(self, item_id: UUID) -> bool:
+        return bool(self._rest.delete("contract_items", {"id": f"eq.{item_id}"}))

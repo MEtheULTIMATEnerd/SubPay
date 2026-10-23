@@ -127,9 +127,9 @@ begin
   where bucket_id = 'evidence';
   get diagnostics v_rows = row_count;
   assert v_rows = 0, 'A cannot rename or replace an uploaded file';
-  delete from storage.objects where bucket_id in ('contracts', 'evidence');
+  delete from storage.objects where bucket_id = 'evidence';
   get diagnostics v_rows = row_count;
-  assert v_rows = 0, 'A cannot delete an uploaded file';
+  assert v_rows = 0, 'A cannot delete an evidence file';
 end $$;
 reset role;
 

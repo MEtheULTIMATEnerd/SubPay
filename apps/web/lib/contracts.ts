@@ -181,3 +181,16 @@ export async function reviewContractItem(id: string, status: ReviewAction): Prom
   storeItem(item);
   mock.logAudit(projectOf(item), `contract_item.${status}`, "contract_item", id, { item: item.item_code });
 }
+
+// ---------- delete ----------
+/** Remove a contract, its items and (live mode) the stored document. */
+export async function deleteContract(id: string): Promise<void> {
+  if (LIVE) await apiFetch<void>(`/contracts/${id}`, { method: "DELETE" });
+  mock.deleteContract(id);
+}
+
+/** Remove an item the AI got wrong. */
+export async function deleteContractItem(id: string): Promise<void> {
+  if (LIVE) await apiFetch<void>(`/contract-items/${id}`, { method: "DELETE" });
+  mock.deleteContractItem(id);
+}

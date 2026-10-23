@@ -249,7 +249,7 @@ Files live in Supabase Storage. These tables hold the path and metadata.
 
 Access: members of the project's organisation can read and upload. After
 upload only the processing fields (`processing_status`, `error`, `page_count`,
-`processed_at`) can change. Contracts are not deleted.
+`processed_at`) can change. A contract can be deleted; its items go with it.
 
 ### `contract_items`
 
@@ -283,9 +283,9 @@ Clients cannot set `edited_by_human`, `reviewed_by`, `extracted_values` or
 `extraction_confidence` on update; the database maintains them.
 
 Access: members of the contract's organisation can read, add, edit and review
-items. Only untouched AI drafts (`review_status = 'draft'` and not
-`edited_by_human`) can be deleted, so a failed extraction can be re-run. An
-item a person has edited, confirmed or rejected is kept.
+items, and delete any item the AI got wrong. Re-running extraction only
+replaces untouched AI drafts (`review_status = 'draft'` and not
+`edited_by_human`).
 
 ### `evidence`
 
@@ -394,7 +394,7 @@ Policies on `storage.objects`, for signed-in users only:
 
 - **Read** (which is also what allows a signed URL to be created): the first folder of the object's name is a project in the caller's organisation.
 - **Upload**: the same, and the name is exactly three parts, `{project_id}/{record_id}/{file}`.
-- There is no update or delete policy. Once uploaded, a source file cannot be replaced, renamed or removed by a user.
+- There is no update policy. Only contract files can be deleted (with their contract); evidence files cannot be replaced, renamed or removed by a user.
 
 `public.storage_object_project_id(name)` returns the project id from an object
 name, or null when the first folder is not a uuid. Files are served through

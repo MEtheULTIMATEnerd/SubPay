@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useRef, useState } from "react";
 import { useData } from "@/lib/store";
 import { read } from "@/lib/api";
-import { getContractDownloadUrl, retryExtraction, uploadContract } from "@/lib/contracts";
+import { deleteContract, getContractDownloadUrl, retryExtraction, uploadContract } from "@/lib/contracts";
 import { LIVE } from "@/lib/env";
 import { EmptyState, ErrorState, Icon, Page, PageHeader, ProcessingBadge, ProgressBar, cx, fmtDate } from "@/components/ui";
 
@@ -39,6 +39,16 @@ export default function ContractsPage() {
       await retryExtraction(contractId);
     } catch (e) {
       setError({ title: "Could not retry", body: (e as Error).message });
+    }
+  }
+
+  async function remove(contractId: string, filename: string) {
+    if (!window.confirm(`Delete ${filename} and its claim schedule? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      await deleteContract(contractId);
+    } catch (e) {
+      setError({ title: "Could not delete", body: (e as Error).message });
     }
   }
 
@@ -115,6 +125,7 @@ export default function ContractsPage() {
                       )}
                       {c.processing_status === "failed" && <button className="btn-outline btn-sm" onClick={() => void retry(c.id)}>Retry</button>}
                       {LIVE && <button className="btn-outline btn-sm ml-2" onClick={() => void download(c.id)}>Download</button>}
+                      <button className="btn-outline btn-sm ml-2" aria-label={`Delete ${c.original_filename}`} onClick={() => void remove(c.id, c.original_filename)}>Delete</button>
                     </td>
                   </tr>
                 );

@@ -334,6 +334,7 @@ export function startExtraction(id: string) {
 }
 
 export function runExtraction(id: string) {
+  if (!getDb().contracts.some((c) => c.id === id)) return; // deleted while processing
   commit((d) => {
     const c = contract(d, id);
     if (!d.settings.ai_available) {
@@ -374,6 +375,31 @@ export function reviewContractItem(id: string, status: "confirmed" | "rejected" 
     const { item, contract: c } = contractItem(d, id);
     Object.assign(item, { review_status: status, reviewed_by: status === "draft" ? null : me(d).id, updated_at: now() });
     audit(d, c.project_id, `contract_item.${status}`, "contract_item", id, { item: item.item_code });
+  });
+}
+
+/** Drops items and the local matches and claim lines that point at them. */
+function dropItems(d: Db, ids: string[]) {
+  const gone = new Set(ids);
+  d.contract_items = d.contract_items.filter((i) => !gone.has(i.id));
+  d.evidence_matches = d.evidence_matches.filter((m) => !gone.has(m.contract_item_id));
+  d.claim_items = d.claim_items.filter((ci) => !gone.has(ci.contract_item_id));
+  for (const v of d.variations) if (v.related_contract_item_id && gone.has(v.related_contract_item_id)) v.related_contract_item_id = null;
+}
+// Demo mode deletes here; live mode calls these after the API delete, to tidy the local copy.
+export function deleteContract(id: string) {
+  commit((d) => {
+    const c = contract(d, id);
+    dropItems(d, d.contract_items.filter((i) => i.contract_id === id).map((i) => i.id));
+    d.contracts = d.contracts.filter((x) => x.id !== id);
+    audit(d, c.project_id, "contract.deleted", "contract", id, { filename: c.original_filename });
+  });
+}
+export function deleteContractItem(id: string) {
+  commit((d) => {
+    const { item, contract: c } = contractItem(d, id);
+    dropItems(d, [id]);
+    audit(d, c.project_id, "contract_item.deleted", "contract_item", id, { item: item.item_code, description: item.description });
   });
 }
 

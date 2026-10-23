@@ -6,6 +6,7 @@ const allowed: Record<string, RegExp> = {
   GET: new RegExp(`^(projects|${project}|${project}/contracts|${contract}|${contract}/items|${project}/evidence|${project}/evidence/${UUID}/observations|${project}/matches|${project}/claim-package\\.(json|html))$`),
   POST: new RegExp(`^(projects|${project}/contracts|${project}/evidence|${contract}/items/${UUID}/review|${project}/evidence/${UUID}/analyse|${project}/matches/generate|${project}/matches/${UUID}/(confirm|reject|reopen))$`),
   PATCH: new RegExp(`^${contract}/items/${UUID}$`),
+  DELETE: new RegExp(`^(${contract}|${contract}/items/${UUID})$`),
 };
 const LIMIT = 21 * 1024 * 1024;
 const reply = (status: number, detail: string) => Response.json({ detail }, { status, headers: { "Cache-Control": "no-store" } });
@@ -48,9 +49,11 @@ async function forward(request: Request, context: { params: Promise<{ path: stri
     for (const name of ["content-disposition", "content-security-policy"]) {
       const value = response.headers.get(name); if (value) headers.set(name, value);
     }
-    return new Response(await response.arrayBuffer(), { status: response.status, headers });
+    const bytes = await response.arrayBuffer();
+    // A 204 (delete) must have no body, not even an empty one.
+    return new Response(response.status === 204 ? null : bytes, { status: response.status, headers });
   } catch {
     return reply(502, "Local FastAPI is unavailable or timed out. Check the API before retrying an upload; it may already have been saved.");
   }
 }
-export { forward as GET, forward as POST, forward as PATCH };
+export { forward as GET, forward as POST, forward as PATCH, forward as DELETE };

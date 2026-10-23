@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useData } from "@/lib/store";
 import { read } from "@/lib/api";
-import { reviewContractItem, updateContractItem, type ItemPatch, type ReviewAction } from "@/lib/contracts";
+import { deleteContractItem, reviewContractItem, updateContractItem, type ItemPatch, type ReviewAction } from "@/lib/contracts";
 import type { ContractItem } from "@/lib/types";
 import { Banner, Dialog, ErrorState, Icon, Page, PageHeader, confColor, cx, fmtDate, money, pct } from "@/components/ui";
 
@@ -114,7 +114,7 @@ export default function ContractItemsPage() {
       )}
 
       <Dialog open={!!editing} onClose={() => setEditing(null)} title={editing ? `${editing.item_code} ${editing.description}` : ""}>
-        {editing && <ItemEditor key={editing.id} item={all.find((x) => x.id === editing.id)!} onDone={() => setEditing(null)} />}
+        {editing && all.some((x) => x.id === editing.id) && <ItemEditor key={editing.id} item={all.find((x) => x.id === editing.id)!} onDone={() => setEditing(null)} />}
       </Dialog>
     </Page>
   );
@@ -186,6 +186,7 @@ function ItemEditor({ item, onDone }: { item: ContractItem; onDone: () => void }
       </div>
       {error && <p className="mt-4 rounded-xl bg-red-bg px-4 py-3 text-sm text-red" role="alert">{error}</p>}
       <div className="mt-6 flex flex-wrap justify-end gap-2">
+        <button className="btn-outline mr-auto" disabled={busy} onClick={() => window.confirm(`Delete ${item.item_code} ${item.description}? This cannot be undone.`) && void run(true, () => deleteContractItem(item.id))}>Delete item</button>
         {item.review_status !== "rejected" && <button className="btn-danger" disabled={busy} onClick={() => void run(true, review("rejected"))}>Reject item</button>}
         {item.review_status !== "draft" && <button className="btn-outline" disabled={busy} onClick={() => void run(false, review("draft"))}>Back to draft</button>}
         <button className="btn-outline" disabled={busy} onClick={() => void run(true, save)}>Save edits</button>

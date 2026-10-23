@@ -181,6 +181,24 @@ class ContractService:
             raise errors.not_found("Contract item")
         return item
 
+    def delete_item(self, item_id: UUID) -> None:
+        """Remove an item the AI got wrong."""
+        if not self._repository.delete_item(item_id):
+            raise errors.not_found("Contract item")
+
+    # ---- delete --------------------------------------------------------------
+
+    def delete(self, contract_id: UUID) -> None:
+        """Remove the contract, its items and the stored document."""
+        contract = self._require(contract_id)
+        if not self._repository.delete_contract(contract_id):
+            raise errors.not_found("Contract")
+        try:
+            self._storage.delete(BUCKET, _object_path(contract))
+        except Exception:
+            # The record is gone and the file is private, so a leftover file is harmless.
+            logger.exception("Could not delete the stored file for contract %s", contract_id)
+
     # ---- helpers -------------------------------------------------------------
 
     def _require(self, contract_id: UUID) -> Contract:

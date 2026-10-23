@@ -268,6 +268,22 @@ class FakeContractRepository:
             row["reviewed_by"] = None if row["review_status"] == "draft" else self._user_id
         return ContractItem.model_validate(row)
 
+    def delete_contract(self, contract_id: UUID) -> bool:
+        if self._visible(contract_id) is None:
+            return False
+        del self._db.contracts[contract_id]
+        for item_id, row in list(self._db.contract_items.items()):
+            if row["contract_id"] == contract_id:
+                del self._db.contract_items[item_id]
+        return True
+
+    def delete_item(self, item_id: UUID) -> bool:
+        row = self._db.contract_items.get(item_id)
+        if row is None or self._visible(row["contract_id"]) is None:
+            return False
+        del self._db.contract_items[item_id]
+        return True
+
 
 class FakeStorage:
     """Files kept in memory. Like the real buckets: private, and never overwritten."""
@@ -290,6 +306,9 @@ class FakeStorage:
         if (bucket, path) not in self.files:
             return None
         return f"https://storage.test/{bucket}/{path}?token=signed&expires={expires_in}"
+
+    def delete(self, bucket: str, path: str) -> None:
+        self.files.pop((bucket, path), None)
 
     def signed_urls(self, bucket: str, paths: list[str], *, expires_in: int) -> dict[str, str]:
         self.batch_sign_calls.append(list(paths))

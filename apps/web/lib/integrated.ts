@@ -79,6 +79,8 @@ export function integratedClient(token: string) {
     items: (pid: string, cid: string) => request<LocalItem[]>(items(pid, cid)),
     editItem: (pid: string, cid: string, iid: string, description: string) => request<LocalItem>(`${items(pid, cid)}/${iid}`, "PATCH", { description }),
     reviewItem: (pid: string, cid: string, iid: string, status: LocalItem["review_status"]) => request<LocalItem>(`${items(pid, cid)}/${iid}/review`, "POST", { status }),
+    deleteContract: async (pid: string, cid: string) => { await responseFor(`${contracts(pid)}/${cid}`, "DELETE"); },
+    deleteItem: async (pid: string, cid: string, iid: string) => { await responseFor(`${items(pid, cid)}/${iid}`, "DELETE"); },
     evidence: (pid: string) => request<LocalEvidence[]>(`projects/${pid}/evidence`),
     uploadEvidence: (pid: string, file: File) => upload<LocalEvidence>(`projects/${pid}/evidence`, file),
     observations: (pid: string, eid: string) => request<LocalAnalysis[]>(`projects/${pid}/evidence/${eid}/observations`),

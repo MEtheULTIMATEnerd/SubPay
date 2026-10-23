@@ -12,7 +12,7 @@ const FIXTURE_IDS = new Set(["aud-1", "aud-2", "aud-3", "aud-4", "aud-5"]);
 const LABEL: Record<string, string> = {
   "project.created": "created the project", "project.updated": "edited project details", "project.archived": "archived the project", "project.restored": "restored the project",
   "contract.uploaded": "uploaded a contract", "contract.extracted": "extracted a claim schedule",
-  "contract_item.edited": "edited a contract item", "contract_item.confirmed": "confirmed a contract item", "contract_item.rejected": "rejected a contract item", "contract_item.draft": "reopened a contract item",
+  "contract_item.edited": "edited a contract item", "contract_item.confirmed": "confirmed a contract item", "contract_item.rejected": "rejected a contract item", "contract_item.draft": "reopened a contract item", "contract.deleted": "deleted a contract", "contract_item.deleted": "deleted a contract item",
   "evidence.uploaded": "uploaded evidence", "evidence.edited": "edited evidence details", "evidence.archived": "archived evidence", "evidence.restored": "restored evidence",
   "match.generated": "generated match suggestions", "match.confirmed": "confirmed a match", "match.rejected": "rejected a match", "match.reopened": "reopened a match",
   "match.edited": "moved evidence to a different line", "match.linked": "linked evidence manually",

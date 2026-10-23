@@ -31,6 +31,8 @@ class FileStorage(Protocol):
 
     def signed_urls(self, bucket: str, paths: list[str], *, expires_in: int) -> dict[str, str]: ...
 
+    def delete(self, bucket: str, path: str) -> None: ...
+
 
 class SupabaseStorage:
     def __init__(
@@ -99,6 +101,11 @@ class SupabaseStorage:
             if signed and not entry.get("error"):
                 links[entry["path"]] = f"{self._storage_url}/{signed.lstrip('/')}"
         return links
+
+    def delete(self, bucket: str, path: str) -> None:
+        response = self._request("DELETE", f"object/{bucket}/{_quote_path(path)}")
+        if not response.is_success and _status(response) != 404:
+            raise _translate_error("delete", bucket, response)
 
     def _request(self, method: str, path: str, **kwargs) -> httpx2.Response:
         if not self._storage_url or not self._anon_key:

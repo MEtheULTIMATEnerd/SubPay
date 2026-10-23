@@ -466,3 +466,18 @@ def test_missing_and_malformed_ids(client: TestClient, as_user: Headers) -> None
     assert client.get(f"{API}/contracts/{uuid4()}", headers=as_user()).status_code == 404
     assert client.get(f"{API}/contracts/not-a-uuid", headers=as_user()).status_code == 422
     assert client.get(f"{API}/projects/{uuid4()}/contracts", headers=as_user()).status_code == 404
+
+
+# ---- delete -------------------------------------------------------------------
+
+
+def test_deleting_a_contract_removes_its_items_and_file(
+    client: TestClient, as_user: Headers, project_a: str, storage: FakeStorage, db: FakeDatabase
+) -> None:
+    contract = upload(client, as_user(), project_a).json()
+    assert db.contract_items
+    url = f"{API}/contracts/{contract['id']}"
+    assert client.delete(url, headers=as_user(USER_B_ID)).status_code == 404
+    assert client.delete(url, headers=as_user()).status_code == 204
+    assert db.contracts == {} and db.contract_items == {} and storage.files == {}
+    assert client.get(url, headers=as_user()).status_code == 404

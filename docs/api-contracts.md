@@ -149,6 +149,8 @@ Sign up, sign in and sign out go straight from the browser to Supabase Auth, not
 | POST | `/api/v1/contract-items/{item_id}/confirm` | Human confirms an item | Live |
 | POST | `/api/v1/contract-items/{item_id}/reject` | Human rejects an item | Live |
 | POST | `/api/v1/contract-items/{item_id}/reopen` | Return an item to draft | Live |
+| DELETE | `/api/v1/contracts/{contract_id}` | Delete a contract, its items and the stored file. Returns `204`. | Live |
+| DELETE | `/api/v1/contract-items/{item_id}` | Delete a line item the AI got wrong. Returns `204`. | Live |
 | POST | `/api/v1/projects/{project_id}/evidence` | Add evidence (a file, a written note, or both) with its details. Returns `201`. | Live |
 | GET | `/api/v1/projects/{project_id}/evidence` | List and search evidence. Filters: `q`, `evidence_type`, `from`, `to`, `archived`, `limit`, `offset` | Live |
 | GET | `/api/v1/evidence/{evidence_id}` | Get one evidence record, including a signed download URL | Live |

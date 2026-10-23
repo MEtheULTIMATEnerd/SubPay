@@ -78,6 +78,10 @@ Under `/api/v1/integrated/projects/{project_id}/contracts`:
 - PATCH `/{contract_id}/items/{item_id}`: edit a draft with description required
   and optional fields as above. Source references and extracted descriptions
   cannot be overwritten. Reviewed items must first be reopened.
+- DELETE `/{contract_id}`: delete the contract, its items, their match
+  suggestions and the stored original. Returns 204.
+- DELETE `/{contract_id}/items/{item_id}`: delete one item (any review status)
+  and its match suggestions. Returns 204. Deletion is permanent.
 - POST `/{contract_id}/items/{item_id}/review`: JSON status `confirmed`, `rejected`
   or `draft`. Draft reopens and clears review metadata. Decisions record the
   shared local identity `local-development-user`, not an independently verified person.

@@ -147,11 +147,6 @@ begin
     raise exception 'moving a contract to another project should be denied';
   exception when insufficient_privilege then null;
   end;
-  begin
-    delete from public.contracts where id = v_id;
-    raise exception 'deleting a contract should be denied';
-  exception when insufficient_privilege then null;
-  end;
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -239,12 +234,11 @@ begin
   exception when check_violation then null;
   end;
 
-  -- only untouched drafts can be removed (to re-run a failed extraction)
-  delete from public.contract_items where contract_id = v_contract;
+  -- a wrongly extracted item can be removed
+  delete from public.contract_items where id = v_untouched;
   get diagnostics v_rows = row_count;
-  assert v_rows = 1, 'only the untouched draft is deleted';
-  assert exists (select 1 from public.contract_items where id = v_item.id), 'the edited item is kept';
-  assert not exists (select 1 from public.contract_items where id = v_untouched), 'the untouched draft is gone';
+  assert v_rows = 1, 'A can delete their own contract item';
+  assert exists (select 1 from public.contract_items where id = v_item.id), 'other items are kept';
 
   perform set_config('test.item_a', v_item.id::text, true);
 end $$;
@@ -395,6 +389,10 @@ begin
   delete from public.contract_items where id = v_item_a;
   get diagnostics v_rows = row_count;
   assert v_rows = 0, 'B cannot delete A''s contract item';
+
+  delete from public.contracts where id = v_contract_a;
+  get diagnostics v_rows = row_count;
+  assert v_rows = 0, 'B cannot delete A''s contract';
 
   update public.evidence set archived = true, title = 'Hijacked' where id = v_evidence_a;
   get diagnostics v_rows = row_count;

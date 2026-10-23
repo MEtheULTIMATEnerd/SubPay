@@ -76,7 +76,8 @@ not independently verified reviewer identity or production account security.
 `/api/integrated/[...path]` is disabled unless the server-side
 `SUBPAY_INTEGRATED_UI_ENABLED=true` flag is set. It checks loopback Host,
 same-origin requests and a supplied bearer header before forwarding. FastAPI
-still validates the token. It forwards only project/contract/item/evidence,
+still validates the token. It forwards only project/contract/item/evidence
+(including contract and item deletion),
 observation, single-image analysis, match generation/review and JSON/HTML package
 endpoints to a fixed loopback address. There is no general URL proxy, cookie
 forwarding, token injection or CORS broadening.

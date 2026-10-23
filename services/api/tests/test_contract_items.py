@@ -268,3 +268,19 @@ def test_missing_and_malformed_item_ids(client: TestClient, as_user: Headers) ->
     assert missing.status_code == 404
     malformed = client.post(f"{API}/contract-items/not-a-uuid/confirm", headers=as_user())
     assert malformed.status_code == 422
+
+
+# ---- delete -------------------------------------------------------------------
+
+
+def test_any_item_can_be_deleted_but_not_by_another_organisation(
+    client: TestClient, as_user: Headers, items: list[dict]
+) -> None:
+    confirmed = items[0]
+    url = f"{API}/contract-items/{confirmed['id']}"
+    client.post(f"{url}/confirm", headers=as_user())
+    assert client.delete(url, headers=as_user(USER_B_ID)).status_code == 404
+    assert client.delete(url, headers=as_user()).status_code == 204
+    listing = client.get(f"{API}/contracts/{confirmed['contract_id']}/items", headers=as_user())
+    assert confirmed["id"] not in [i["id"] for i in listing.json()["items"]]
+    assert client.delete(url, headers=as_user()).status_code == 404

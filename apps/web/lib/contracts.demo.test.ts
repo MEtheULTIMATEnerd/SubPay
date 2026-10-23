@@ -6,8 +6,8 @@ vi.mock("./env", () => ({ LIVE: false, API_URL: "", SUPABASE_URL: "", SUPABASE_A
 vi.mock("./http", () => ({ apiFetch, setUnauthorizedHandler: vi.fn() }));
 vi.mock("./supabase", () => ({ supabase: () => { throw new Error("Supabase must not be used in demo mode"); } }));
 
-import { read, runExtraction } from "./api";
-import { getContractDownloadUrl, refreshContracts, reviewContractItem, updateContractItem, uploadContract } from "./contracts";
+import { read, readiness, runExtraction } from "./api";
+import { deleteContract, deleteContractItem, getContractDownloadUrl, refreshContracts, reviewContractItem, updateContractItem, uploadContract } from "./contracts";
 import { getDb, resetDb } from "./store";
 
 beforeEach(() => resetDb({ profile_id: "usr-ollie" }));
@@ -32,4 +32,20 @@ test("demo mode uploads, extracts and reviews locally without calling the API", 
 test("demo mode surfaces upload validation as a rejected promise", async () => {
   const file = new File(["x"], "a.exe", { type: "application/x-msdownload" });
   await expect(uploadContract("prj-hume", file)).rejects.toThrow("PDF or DOCX");
+});
+
+test("deleting items and contracts also drops the matches and claim lines that used them", async () => {
+  const claimed = getDb().claim_items[0];
+  const item = getDb().contract_items.find((i) => i.id === claimed.contract_item_id)!;
+  await deleteContractItem(item.id);
+  const db = getDb();
+  expect(db.contract_items.some((i) => i.id === item.id)).toBe(false);
+  expect(db.claim_items.some((ci) => ci.contract_item_id === item.id)).toBe(false);
+  expect(db.evidence_matches.some((m) => m.contract_item_id === item.id)).toBe(false);
+  expect(() => readiness(db, claimed.claim_id)).not.toThrow();
+
+  await deleteContract(item.contract_id);
+  expect(getDb().contracts.some((c) => c.id === item.contract_id)).toBe(false);
+  expect(getDb().contract_items.some((i) => i.contract_id === item.contract_id)).toBe(false);
+  expect(apiFetch).not.toHaveBeenCalled();
 });

@@ -211,3 +211,25 @@ def test_synonyms_generic_and_unrelated_terms():
         score_item("Install equipment", {"objects_certain": ["Construction equipment at site"]})
         is None
     )
+
+
+def test_deleting_items_and_contracts_removes_their_matches_and_file(setup):
+    c, pid, item, ev, directory = setup
+    add_analysis(directory, ev)
+    c.post(f"/projects/{pid}/matches/generate", headers=HEADERS)
+    base = f"/projects/{pid}/contracts"
+    contract_id = c.get(base, headers=HEADERS).json()[0]["id"]
+    stored = directory / c.get(f"{base}/{contract_id}", headers=HEADERS).json()["storage_path"]
+
+    other = c.post("/projects", headers=HEADERS, json={"name": "Other"}).json()["id"]
+    elsewhere = f"/projects/{other}/contracts/{contract_id}"
+    assert c.delete(elsewhere, headers=HEADERS).status_code == 404
+
+    url = f"{base}/{contract_id}/items/{item}"
+    assert c.delete(url, headers=HEADERS).status_code == 204
+    assert c.get(f"/projects/{pid}/matches", headers=HEADERS).json() == []
+    assert c.delete(url, headers=HEADERS).status_code == 404
+
+    assert c.delete(f"{base}/{contract_id}", headers=HEADERS).status_code == 204
+    assert c.get(base, headers=HEADERS).json() == [] and not stored.exists()
+    assert c.get(f"/projects/{pid}/claim-package.json", headers=HEADERS).status_code == 200

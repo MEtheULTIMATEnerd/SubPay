@@ -88,6 +88,23 @@ export default function IntegratedPage() {
       setNotice("Contract item saved.");
     });
   }
+  function deleteContract() {
+    if (!window.confirm(`Delete ${contract!.original_filename}, its items and their match suggestions? This cannot be undone.`)) return;
+    void run("Deleting contract", async () => {
+      await api!.deleteContract(project!.id, contract!.id);
+      setContract(null); setItems([]);
+      setContracts(await api!.contracts(project!.id));
+      setNotice("Contract deleted. Refresh matches to update the review list.");
+    });
+  }
+  function deleteItem(item: LocalItem) {
+    if (!window.confirm(`Delete ${item.item_code || "this item"} and its match suggestions? This cannot be undone.`)) return;
+    void run("Deleting item", async () => {
+      await api!.deleteItem(project!.id, contract!.id, item.id);
+      setItems(rows => rows.filter(row => row.id !== item.id));
+      setNotice("Contract item deleted. Refresh matches to update the review list.");
+    });
+  }
   return <div className={styles.root}>
     <header className={styles.header}><strong>SubPay</strong><Link href="/login">Deterministic demo</Link></header>
     <main className={styles.main}>
@@ -114,10 +131,10 @@ export default function IntegratedPage() {
             <form className={styles.upload} onSubmit={e => upload(e, "contract")}><label>Contract PDF or DOCX (up to 20 MB)<input type="file" name="file" accept=".pdf,.docx" required disabled={!!busy} /></label><button disabled={!!busy} type="submit"><Icon.upload className="h-4 w-4" />Upload contract</button></form>
             <label>Contract<select aria-label="Contract" disabled={!!busy} value={contract?.id ?? ""} onChange={e => void run("Loading contract", () => selectContract(e.target.value))}><option value="">Select a contract</option>{contracts.map(c => <option key={c.id} value={c.id}>{c.original_filename}</option>)}</select></label>
             {!contracts.length && <p>No contracts uploaded.</p>}
-            {contract && <><p>{contract.original_filename} · {date(contract.created_at)}</p>{contract.limitation && <p className={styles.warning}>{contract.limitation} Manual review is required.</p>}
+            {contract && <><p>{contract.original_filename} · {date(contract.created_at)} <button type="button" disabled={!!busy} onClick={deleteContract}>Delete contract</button></p>{contract.limitation && <p className={styles.warning}>{contract.limitation} Manual review is required.</p>}
               <details><summary>Extracted document text</summary><pre>{contract.extracted_text || "No readable text was extracted."}</pre></details>
               <h3>Contract items</h3>{!items.length && <p>No extracted items. Manual review is required; manual item entry is not available on this page yet.</p>}
-              <div>{items.map(item => <ItemRow key={`${item.id}-${item.updated_at}`} item={item} busy={!!busy} update={updateItem} />)}</div>
+              <div>{items.map(item => <ItemRow key={`${item.id}-${item.updated_at}`} item={item} busy={!!busy} update={updateItem} remove={deleteItem} />)}</div>
             </>}
           </section>
           <section aria-labelledby="evidence-heading"><div className={styles.sectionHeading}><h2 id="evidence-heading">3. Evidence &amp; AI Analysis</h2><button aria-label="Refresh evidence" title="Refresh evidence" disabled={!!busy} onClick={() => void run("Refreshing evidence", async () => setEvidence(await api.evidence(project.id)))}><span aria-hidden="true">&#8635;</span></button></div>
@@ -132,11 +149,11 @@ export default function IntegratedPage() {
   </div>;
 }
 
-function ItemRow({ item, busy, update }: { item: LocalItem; busy: boolean; update: (item: LocalItem, status?: LocalItem["review_status"], description?: string) => void }) {
+function ItemRow({ item, busy, update, remove }: { item: LocalItem; busy: boolean; update: (item: LocalItem, status?: LocalItem["review_status"], description?: string) => void; remove: (item: LocalItem) => void }) {
   const [description, setDescription] = useState(item.description);
   return <article className={styles.item}><div className={styles.sectionHeading}><h4>{item.item_code || "Contract item"}</h4><strong>{item.review_status}</strong></div><p className={styles.source}>Source: {item.source_reference}</p>
     <form onSubmit={e => { e.preventDefault(); update(item, undefined, description); }}><label>Description<textarea aria-label="Contract item description" value={description} minLength={3} maxLength={2000} required disabled={busy || item.review_status !== "draft"} onChange={e => setDescription(e.target.value)} /></label>
-      <div className={styles.actions}>{item.review_status === "draft" ? <><button type="submit" disabled={busy || description === item.description}>Save description</button><button type="button" disabled={busy || description !== item.description} onClick={() => update(item, "confirmed")}><Icon.check className="h-4 w-4" />Confirm</button><button type="button" disabled={busy || description !== item.description} onClick={() => update(item, "rejected")}>Reject</button></> : <button type="button" disabled={busy} onClick={() => update(item, "draft")}>Reopen</button>}</div>
+      <div className={styles.actions}>{item.review_status === "draft" ? <><button type="submit" disabled={busy || description === item.description}>Save description</button><button type="button" disabled={busy || description !== item.description} onClick={() => update(item, "confirmed")}><Icon.check className="h-4 w-4" />Confirm</button><button type="button" disabled={busy || description !== item.description} onClick={() => update(item, "rejected")}>Reject</button></> : <button type="button" disabled={busy} onClick={() => update(item, "draft")}>Reopen</button>}<button type="button" disabled={busy} onClick={() => remove(item)}>Delete item</button></div>
     </form><p>{item.quantity !== null ? `Recorded quantity: ${item.quantity} ${item.unit ?? ""}` : "Quantity not recorded"}{item.rate !== null && ` · Recorded rate: ${item.rate}`}{item.amount !== null && ` · Recorded amount: ${item.amount}`}</p>
     {item.reviewed_at && <p>Reviewed by {item.reviewed_by} · {date(item.reviewed_at)}</p>}
   </article>;

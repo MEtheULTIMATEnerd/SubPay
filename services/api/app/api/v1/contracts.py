@@ -63,6 +63,15 @@ def get_contract(contract_id: UUID, contracts: Contracts) -> ContractDetail:
     return contracts.get(contract_id)
 
 
+@router.delete(
+    "/contracts/{contract_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a contract, its line items and the stored document",
+)
+def delete_contract(contract_id: UUID, contracts: Contracts) -> None:
+    contracts.delete(contract_id)
+
+
 @router.post(
     "/contracts/{contract_id}/extract",
     response_model=Contract,
@@ -123,3 +132,12 @@ def reject_contract_item(item_id: UUID, contracts: Contracts) -> ContractItem:
 )
 def reopen_contract_item(item_id: UUID, contracts: Contracts) -> ContractItem:
     return contracts.review_item(item_id, "draft")
+
+
+@router.delete(
+    "/contract-items/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a line item the AI got wrong",
+)
+def delete_contract_item(item_id: UUID, contracts: Contracts) -> None:
+    contracts.delete_item(item_id)

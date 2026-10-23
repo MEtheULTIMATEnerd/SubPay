@@ -164,7 +164,7 @@ AI suggestions -> human confirmation -> claim readiness -> evidence package
 - The database stores the path and metadata. The file bytes live in Storage, not in Postgres.
 - The browser uploads to FastAPI, which checks the file and then stores it in Supabase Storage **as the signed-in user**, so the storage policies apply as well as the API's own checks.
 - A file's type is decided from its contents, not from what the browser claims. The uploaded filename is kept for display and never used in a storage path.
-- Uploaded files are immutable for users: no overwrite, rename or delete.
+- Uploaded files are immutable for users: no overwrite or rename. Only a contract file can be deleted, together with its contract.
 - Requests larger than 60 MB are refused before they are read.
 
 ## 7. Current state

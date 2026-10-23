@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { integratedClient } from "./integrated";
+import { DELETE } from "../app/api/integrated/[...path]/route";
 
 const TOKEN = "test-only-local-token-not-a-real-secret-12345";
 const fetchMock = vi.fn();
@@ -79,4 +80,29 @@ test("authentication, API validation and network errors are useful", async () =>
   await expect(api.contracts("p1")).rejects.toThrow(/415/);
   fetchMock.mockRejectedValueOnce(new TypeError("fetch failed"));
   await expect(api.projects()).rejects.toThrow(/Cannot reach the local server/);
+});
+test("contract and item deletion call DELETE on the selected records", async () => {
+  const api = integratedClient(TOKEN);
+  fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+  await api.deleteContract("p1", "c1");
+  await api.deleteItem("p1", "c1", "i1");
+  expect(fetchMock.mock.calls.map(call => [call[1].method, call[0]])).toEqual([
+    ["DELETE", "/api/integrated/projects/p1/contracts/c1"],
+    ["DELETE", "/api/integrated/projects/p1/contracts/c1/items/i1"],
+  ]);
+});
+test("bridge forwards only contract and item deletes, and passes a 204 through", async () => {
+  vi.stubEnv("SUBPAY_INTEGRATED_UI_ENABLED", "true");
+  const id = "00000000-0000-4000-8000-000000000001";
+  const call = (path: string) => DELETE(
+    new Request(`http://127.0.0.1:3101/api/integrated/${path}`, { method: "DELETE", headers: { host: "127.0.0.1:3101", authorization: `Bearer ${TOKEN}` } }),
+    { params: Promise.resolve({ path: path.split("/") }) },
+  );
+  fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+  expect((await call(`projects/${id}/contracts/${id}`)).status).toBe(204);
+  expect((await call(`projects/${id}/contracts/${id}/items/${id}`)).status).toBe(204);
+  expect((await call(`projects/${id}`)).status).toBe(404);
+  expect((await call(`projects/${id}/evidence/${id}`)).status).toBe(404);
+  expect(fetchMock).toHaveBeenCalledTimes(2);
+  vi.unstubAllEnvs();
 });
