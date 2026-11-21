@@ -1,5 +1,10 @@
 # services/ai
 
+> This document describes the AI service foundation. For the complete
+> integrated SubPay MVP setup, including optional hosted vision configuration
+> and the three-service local workflow, follow the root [README](../../README.md)
+> and [integrated frontend guide](../../apps/web/INTEGRATED.md).
+
 AI / intelligence service for SubPay. Owner: Arya.
 
 This service serves `/ai/v1` and owns the model-facing side of:

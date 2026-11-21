@@ -21,14 +21,12 @@ They are updated in the same merge request that adds the piece.
 ## 2. Get the code
 
 ```bash
-git clone https://git.infotech.monash.edu/fit3195/fit3195-s2-2026/DTE303.git
-cd DTE303
-git switch main
+git clone https://github.com/MEtheULTIMATEnerd/SubPay.git
+cd SubPay
+git switch master
 ```
 
-`main` is the integration branch. The repository also has an old `master`
-branch that holds only the initial empty commit. Do not use it and do not merge
-it into `main`.
+`master` is the integrated public submission branch.
 
 ## 3. Run the web app
 

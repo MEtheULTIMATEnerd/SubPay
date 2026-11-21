@@ -5,8 +5,8 @@
 A **deterministic frontend MVP demo** for FIT3195 Assessment 3. The complete
 demonstration workflow runs in the browser using fictional seed data,
 localStorage and simulated AI behaviour. It is not a verified live deployment.
-The protected frontend checkpoint is `707a63ea6bc79999ce6bdb2609f46070ed5b7f3b`
-on `feature/claim-experience`; ensure the supplied checkout contains that checkpoint.
+The submitted public source is maintained on the `master` branch of the
+repository linked below.
 
 ## Run the FIT3195 MVP Demo
 
@@ -44,12 +44,10 @@ This is the local, three-service workflow for tutor evaluation. It is separate
 from the deterministic browser demo above and does not require Supabase,
 Docker, database migrations or public deployment.
 
-The complete integrated MVP is on the `feature/claim-experience` branch. At the
-time of this README update, use commit `a29d7ad` or a later commit on that
-branch. The repository is:
+The complete integrated MVP is on the `master` branch of the public repository:
 
 ```text
-https://git.infotech.monash.edu/fit3195/fit3195-s2-2026/DTE303.git
+https://github.com/MEtheULTIMATEnerd/SubPay
 ```
 
 ### Prerequisites
